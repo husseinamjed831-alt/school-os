@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>الهيكل الأكاديمي — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">إضافة</h3>
+        <button class="modal-close" id="modal-close" aria-label="إغلاق">✕</button>
+      </div>
+      <form id="entity-form"></form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { listBranches, createBranch, updateBranch, deactivateBranch } from "/js/api/branches.js";
+    import { listAcademicYears, createAcademicYear, updateAcademicYear, setCurrentAcademicYear } from "/js/api/academic-years.js";
+    import { listClasses, createClass, updateClass, deleteClass } from "/js/api/classes.js";
+    import { listSections, createSection, updateSection, deleteSection } from "/js/api/sections.js";
+    import { listSubjects, createSubject, updateSubject, deleteSubject } from "/js/api/subjects.js";
+    import { listTeachers } from "/js/api/teachers.js";
+    import { guard, showToast, escapeHtml, formatDate } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["school_admin", "branch_admin"]);
+    const content = mountShell(profile, "setup");
+
+    content.innerHTML = `
+      <h1>الهيكل الأكاديمي</h1>
+      <p class="text-muted" style="margin-bottom:20px;">الفروع، السنوات الدراسية، الصفوف، والشعب</p>
+      <div class="tabs" id="tabs">
+        <button class="tab-btn is-active" data-tab="branches">الفروع</button>
+        <button class="tab-btn" data-tab="years">السنوات الدراسية</button>
+        <button class="tab-btn" data-tab="classes">الصفوف</button>
+        <button class="tab-btn" data-tab="sections">الشعب</button>
+        <button class="tab-btn" data-tab="subjects">المواد الدراسية</button>
+      </div>
+      <div class="flex-between" style="margin-bottom:16px;">
+        <div></div>
+        <button class="btn btn-primary" id="add-btn">+ إضافة</button>
+      </div>
+      <div id="tab-content"></div>
+    `;
+
+    const overlay = document.getElementById("modal-overlay");
+    const formEl = document.getElementById("entity-form");
+    let activeTab = "branches";
+    let cache = { branches: [], years: [], classes: [], sections: [], subjects: [], teachers: [] };
+
+    document.getElementById("tabs").addEventListener("click", (e) => {
+      const btn = e.target.closest(".tab-btn");
+      if (!btn) return;
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      activeTab = btn.dataset.tab;
+      renderTab();
+    });
+    document.getElementById("add-btn").addEventListener("click", () => openModal(null));
+    document.getElementById("modal-close").addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+
+    function closeModal() {
+      overlay.classList.remove("is-open");
+      formEl.innerHTML = "";
+    }
+
+    async function loadAll() {
+      cache.branches = (await guard(() => listBranches())) ?? [];
+      cache.years = (await guard(() => listAcademicYears())) ?? [];
+      cache.classes = (await guard(() => listClasses())) ?? [];
+      cache.sections = (await guard(() => listSections())) ?? [];
+      cache.subjects = (await guard(() => listSubjects())) ?? [];
+      cache.teachers = (await guard(() => listTeachers())) ?? [];
+    }
+
+    // ---------- Branches ----------
+    function branchFormHtml(item) {
+      return `
+        <input type="hidden" id="f-id" value="${item?.id ?? ""}" />
+        <div class="field"><label>اسم الفرع</label><input id="f-name" required value="${escapeHtml(item?.name ?? "")}" /></div>
+        <div class="field"><label>العنوان</label><input id="f-address" value="${escapeHtml(item?.address ?? "")}" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost modal-cancel-btn">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>`;
+    }
+    async function submitBranch(item) {
+      const payload = {
+        name: document.getElementById("f-name").value.trim(),
+        address: document.getElementById("f-address").value.trim() || null,
+        school_id: profile.school_id,
+      };
+      return item ? updateBranch(item.id, payload) : createBranch(payload);
+    }
+    function renderBranches() {
+      const rows = cache.branches;
+      if (rows.length === 0) return emptyState("لا توجد فروع بعد");
+      return tableHtml(
+        ["الاسم", "العنوان", "الحالة", ""],
+        rows.map((b) => [
+          escapeHtml(b.name),
+          escapeHtml(b.address ?? "—"),
+          `<span class="badge ${b.is_active ? "badge-success" : "badge-neutral"}">${b.is_active ? "نشط" : "معطل"}</span>`,
+          actionButtons(b.id, b.is_active),
+        ])
+      );
+    }
+
+    // ---------- Academic years ----------
+    function yearFormHtml(item) {
+      return `
+        <input type="hidden" id="f-id" value="${item?.id ?? ""}" />
+        <div class="field"><label>الوصف (مثال: 2026-2027)</label><input id="f-label" required value="${escapeHtml(item?.label ?? "")}" /></div>
+        <div class="field"><label>تاريخ البداية</label><input type="date" id="f-start" required value="${item?.starts_on ?? ""}" /></div>
+        <div class="field"><label>تاريخ النهاية</label><input type="date" id="f-end" required value="${item?.ends_on ?? ""}" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost modal-cancel-btn">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>`;
+    }
+    async function submitYear(item) {
+      const payload = {
+        label: document.getElementById("f-label").value.trim(),
+        starts_on: document.getElementById("f-start").value,
+        ends_on: document.getElementById("f-end").value,
+        school_id: profile.school_id,
+      };
+      return item ? updateAcademicYear(item.id, payload) : createAcademicYear(payload);
+    }
+    function renderYears() {
+      const rows = cache.years;
+      if (rows.length === 0) return emptyState("لا توجد سنوات دراسية بعد");
+      return tableHtml(
+        ["السنة", "البداية", "النهاية", "الحالية", ""],
+        rows.map((y) => [
+          escapeHtml(y.label),
+          formatDate(y.starts_on),
+          formatDate(y.ends_on),
+          y.is_current
+            ? `<span class="badge badge-primary">الحالية</span>`
+            : `<button class="btn btn-ghost btn-sm" data-set-current="${y.id}">تعيين كحالية</button>`,
+          `<button class="btn btn-ghost btn-sm" data-edit="${y.id}">تعديل</button>`,
+        ])
+      );
+    }
+
+    // ---------- Classes ----------
+    function classFormHtml(item) {
+      return `
+        <input type="hidden" id="f-id" value="${item?.id ?? ""}" />
+        <div class="field"><label>اسم الصف</label><input id="f-name" required value="${escapeHtml(item?.name ?? "")}" placeholder="الأول متوسط" /></div>
+        <div class="field"><label>المستوى الدراسي (رقم)</label><input type="number" id="f-grade" required min="1" max="12" value="${item?.grade_level ?? ""}" /></div>
+        <div class="field"><label>الفرع</label><select id="f-branch" required>${cache.branches.map((b) => `<option value="${b.id}" ${item?.branch_id === b.id ? "selected" : ""}>${escapeHtml(b.name)}</option>`).join("")}</select></div>
+        <div class="field"><label>السنة الدراسية</label><select id="f-year" required>${cache.years.map((y) => `<option value="${y.id}" ${item?.academic_year_id === y.id ? "selected" : ""}>${escapeHtml(y.label)}</option>`).join("")}</select></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost modal-cancel-btn">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>`;
+    }
+    async function submitClass(item) {
+      const payload = {
+        name: document.getElementById("f-name").value.trim(),
+        grade_level: Number(document.getElementById("f-grade").value),
+        branch_id: document.getElementById("f-branch").value,
+        academic_year_id: document.getElementById("f-year").value,
+        school_id: profile.school_id,
+      };
+      return item ? updateClass(item.id, payload) : createClass(payload);
+    }
+    function renderClasses() {
+      const rows = cache.classes;
+      if (rows.length === 0) return emptyState("لا توجد صفوف بعد — أضف فرعاً وسنة دراسية أولاً");
+      return tableHtml(
+        ["الصف", "المستوى", "الفرع", "السنة", ""],
+        rows.map((c) => [
+          escapeHtml(c.name),
+          c.grade_level,
+          escapeHtml(c.branches?.name ?? "—"),
+          escapeHtml(c.academic_years?.label ?? "—"),
+          `<button class="btn btn-ghost btn-sm" data-edit="${c.id}">تعديل</button><button class="btn btn-danger btn-sm" data-delete="${c.id}">حذف</button>`,
+        ])
+      );
+    }
+
+    // ---------- Sections ----------
+    function sectionFormHtml(item) {
+      return `
+        <input type="hidden" id="f-id" value="${item?.id ?? ""}" />
+        <div class="field"><label>اسم الشعبة</label><input id="f-name" required value="${escapeHtml(item?.name ?? "")}" placeholder="أ" /></div>
+        <div class="field"><label>الصف</label><select id="f-class" required>${cache.classes.map((c) => `<option value="${c.id}" ${item?.class_id === c.id ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}</select></div>
+        <div class="field"><label>السعة القصوى (اختياري)</label><input type="number" id="f-capacity" min="1" value="${item?.capacity ?? ""}" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost modal-cancel-btn">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>`;
+    }
+    async function submitSection(item) {
+      const payload = {
+        name: document.getElementById("f-name").value.trim(),
+        class_id: document.getElementById("f-class").value,
+        capacity: document.getElementById("f-capacity").value ? Number(document.getElementById("f-capacity").value) : null,
+        school_id: profile.school_id,
+      };
+      return item ? updateSection(item.id, payload) : createSection(payload);
+    }
+    function renderSections() {
+      const rows = cache.sections;
+      if (rows.length === 0) return emptyState("لا توجد شعب بعد — أضف صفاً أولاً");
+      return tableHtml(
+        ["الشعبة", "الصف", "السعة", ""],
+        rows.map((s) => [
+          escapeHtml(s.name),
+          escapeHtml(s.classes?.name ?? "—"),
+          s.capacity ?? "—",
+          `<button class="btn btn-ghost btn-sm" data-edit="${s.id}">تعديل</button><button class="btn btn-danger btn-sm" data-delete="${s.id}">حذف</button>`,
+        ])
+      );
+    }
+
+    // ---------- Subjects ----------
+    function subjectFormHtml(item) {
+      return `
+        <input type="hidden" id="f-id" value="${item?.id ?? ""}" />
+        <div class="field"><label>اسم المادة</label><input id="f-name" required value="${escapeHtml(item?.name ?? "")}" placeholder="الرياضيات" /></div>
+        <div class="field"><label>الصف</label><select id="f-class" required>${cache.classes.map((c) => `<option value="${c.id}" ${item?.class_id === c.id ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}</select></div>
+        <div class="field"><label>المعلم</label><select id="f-teacher"><option value="">— بدون تعيين —</option>${cache.teachers.map((t) => `<option value="${t.id}" ${item?.teacher_id === t.id ? "selected" : ""}>${escapeHtml(t.profiles?.full_name ?? "—")}</option>`).join("")}</select></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost modal-cancel-btn">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>`;
+    }
+    async function submitSubject(item) {
+      const payload = {
+        name: document.getElementById("f-name").value.trim(),
+        class_id: document.getElementById("f-class").value,
+        teacher_id: document.getElementById("f-teacher").value || null,
+        school_id: profile.school_id,
+      };
+      return item ? updateSubject(item.id, payload) : createSubject(payload);
+    }
+    function renderSubjects() {
+      const rows = cache.subjects;
+      if (rows.length === 0) return emptyState("لا توجد مواد دراسية بعد — أضف صفاً أولاً");
+      return tableHtml(
+        ["المادة", "الصف", "المعلم", ""],
+        rows.map((s) => [
+          escapeHtml(s.name),
+          escapeHtml(s.classes?.name ?? "—"),
+          escapeHtml(s.teachers?.profiles?.full_name ?? "— بدون تعيين —"),
+          `<button class="btn btn-ghost btn-sm" data-edit="${s.id}">تعديل</button><button class="btn btn-danger btn-sm" data-delete="${s.id}">حذف</button>`,
+        ])
+      );
+    }
+
+    const TAB_CONFIG = {
+      branches: { render: renderBranches, formHtml: branchFormHtml, submit: submitBranch, label: "فرع" },
+      years: { render: renderYears, formHtml: yearFormHtml, submit: submitYear, label: "سنة دراسية" },
+      classes: { render: renderClasses, formHtml: classFormHtml, submit: submitClass, label: "صف" },
+      sections: { render: renderSections, formHtml: sectionFormHtml, submit: submitSection, label: "شعبة" },
+      subjects: { render: renderSubjects, formHtml: subjectFormHtml, submit: submitSubject, label: "مادة" },
+    };
+
+    function emptyState(text) {
+      return `<div class="empty-state"><div class="empty-state-title">${text}</div></div>`;
+    }
+    function tableHtml(headers, rows) {
+      return `
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+            <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody>
+          </table>
+        </div>`;
+    }
+    function actionButtons(id, isActive) {
+      return `<button class="btn btn-ghost btn-sm" data-edit="${id}">تعديل</button>${isActive ? `<button class="btn btn-danger btn-sm" data-deactivate="${id}">تعطيل</button>` : ""}`;
+    }
+
+    function openModal(item) {
+      const config = TAB_CONFIG[activeTab];
+      document.getElementById("modal-title").textContent = item ? `تعديل ${config.label}` : `${config.label} جديد`;
+      formEl.innerHTML = config.formHtml(item);
+      formEl.querySelector(".modal-cancel-btn")?.addEventListener("click", closeModal);
+      formEl.onsubmit = async (e) => {
+        e.preventDefault();
+        const result = await guard(() => config.submit(item));
+        if (result) {
+          showToast("تم الحفظ بنجاح", "success");
+          overlay.classList.remove("is-open");
+          await loadAll();
+          renderTab();
+        }
+      };
+      overlay.classList.add("is-open");
+    }
+
+    function renderTab() {
+      const container = document.getElementById("tab-content");
+      container.innerHTML = TAB_CONFIG[activeTab].render();
+      wireRowActions(container);
+    }
+
+    function wireRowActions(container) {
+      const findItem = (id) => cache[activeTab].find((r) => r.id === id);
+
+      container.querySelectorAll("[data-edit]").forEach((btn) =>
+        btn.addEventListener("click", () => openModal(findItem(btn.dataset.edit)))
+      );
+      container.querySelectorAll("[data-deactivate]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!confirm("هل تريد التعطيل؟")) return;
+          const fn = activeTab === "branches" ? deactivateBranch : null;
+          if (!fn) return;
+          const result = await guard(() => fn(btn.dataset.deactivate));
+          if (result) {
+            showToast("تم التعطيل", "success");
+            await loadAll();
+            renderTab();
+          }
+        })
+      );
+      container.querySelectorAll("[data-delete]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!confirm("هل تريد الحذف؟ لا يمكن التراجع عن هذا الإجراء.")) return;
+          const fn =
+            activeTab === "classes" ? deleteClass :
+            activeTab === "sections" ? deleteSection :
+            activeTab === "subjects" ? deleteSubject : null;
+          if (!fn) return;
+          const result = await guard(() => fn(btn.dataset.delete));
+          if (result) {
+            showToast("تم الحذف", "success");
+            await loadAll();
+            renderTab();
+          }
+        })
+      );
+      container.querySelectorAll("[data-set-current]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          const result = await guard(() => setCurrentAcademicYear(btn.dataset.setCurrent, profile.school_id));
+          if (result) {
+            showToast("تم تعيين السنة الحالية", "success");
+            await loadAll();
+            renderTab();
+          }
+        })
+      );
+    }
+
+    await loadAll();
+    renderTab();
+  </script>
+</body>
+</html>

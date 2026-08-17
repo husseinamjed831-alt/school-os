@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>المدارس — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <div class="modal-overlay" id="school-modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="school-modal-title">مدرسة جديدة</h3>
+        <button class="modal-close" id="school-modal-close" aria-label="إغلاق">✕</button>
+      </div>
+      <form id="school-form">
+        <input type="hidden" id="school-id" />
+        <div class="field">
+          <label for="school-name">اسم المدرسة</label>
+          <input type="text" id="school-name" required />
+        </div>
+        <div class="field">
+          <label for="school-slug">المعرف (بالإنجليزية، بدون مسافات)</label>
+          <input type="text" id="school-slug" required pattern="[a-z0-9-]+" placeholder="al-salam" />
+          <span class="field-hint">يستخدم كرابط فريد للمدرسة — أحرف إنجليزية صغيرة وأرقام وشرطات فقط</span>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="school-cancel">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="admin-modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>إنشاء مدير للمدرسة</h3>
+        <button class="modal-close" id="admin-modal-close" aria-label="إغلاق">✕</button>
+      </div>
+      <form id="admin-form">
+        <input type="hidden" id="admin-school-id" />
+        <div class="field"><label for="admin-name">الاسم الكامل</label><input id="admin-name" required /></div>
+        <div class="field"><label for="admin-email">البريد الإلكتروني</label><input type="email" id="admin-email" required /></div>
+        <div class="field"><label for="admin-password">كلمة المرور المبدئية</label><input type="password" id="admin-password" required minlength="8" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="admin-cancel">إلغاء</button>
+          <button type="submit" class="btn btn-primary" id="admin-submit">إنشاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { listSchools, createSchool, updateSchool, deactivateSchool } from "/js/api/schools.js";
+    import { createUserAccount } from "/js/api/users.js";
+    import { guard, showToast, escapeHtml, formatDate } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["super_admin"]);
+    const content = mountShell(profile, "schools");
+
+    content.innerHTML = `
+      <div class="flex-between" style="margin-bottom:20px;">
+        <div>
+          <h1>المدارس</h1>
+          <p class="text-muted">إدارة المدارس المشتركة في المنصة</p>
+        </div>
+        <button class="btn btn-primary" id="new-school-btn">+ مدرسة جديدة</button>
+      </div>
+      <div id="schools-table-wrap"></div>
+    `;
+
+    const overlay = document.getElementById("school-modal-overlay");
+    const form = document.getElementById("school-form");
+
+    function openModal(school = null) {
+      document.getElementById("school-modal-title").textContent = school ? "تعديل مدرسة" : "مدرسة جديدة";
+      document.getElementById("school-id").value = school?.id ?? "";
+      document.getElementById("school-name").value = school?.name ?? "";
+      document.getElementById("school-slug").value = school?.slug ?? "";
+      overlay.classList.add("is-open");
+    }
+    function closeModal() {
+      overlay.classList.remove("is-open");
+      form.reset();
+    }
+    document.getElementById("new-school-btn").addEventListener("click", () => openModal());
+    document.getElementById("school-modal-close").addEventListener("click", closeModal);
+    document.getElementById("school-cancel").addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+
+    const adminOverlay = document.getElementById("admin-modal-overlay");
+    const adminForm = document.getElementById("admin-form");
+    function openAdminModal(schoolId) {
+      document.getElementById("admin-school-id").value = schoolId;
+      adminOverlay.classList.add("is-open");
+    }
+    function closeAdminModal() {
+      adminOverlay.classList.remove("is-open");
+      adminForm.reset();
+    }
+    document.getElementById("admin-modal-close").addEventListener("click", closeAdminModal);
+    document.getElementById("admin-cancel").addEventListener("click", closeAdminModal);
+    adminOverlay.addEventListener("click", (e) => { if (e.target === adminOverlay) closeAdminModal(); });
+
+    adminForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const submitBtn = document.getElementById("admin-submit");
+      submitBtn.disabled = true;
+      submitBtn.textContent = "جارِ الإنشاء...";
+      const result = await guard(() =>
+        createUserAccount({
+          full_name: document.getElementById("admin-name").value.trim(),
+          email: document.getElementById("admin-email").value.trim(),
+          password: document.getElementById("admin-password").value,
+          role: "school_admin",
+          school_id: document.getElementById("admin-school-id").value,
+        })
+      );
+      submitBtn.disabled = false;
+      submitBtn.textContent = "إنشاء";
+      if (result) {
+        showToast("تم إنشاء حساب مدير المدرسة", "success");
+        closeAdminModal();
+      }
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("school-id").value;
+      const payload = {
+        name: document.getElementById("school-name").value.trim(),
+        slug: document.getElementById("school-slug").value.trim().toLowerCase(),
+      };
+      const result = await guard(() => (id ? updateSchool(id, payload) : createSchool(payload)));
+      if (result) {
+        showToast(id ? "تم تحديث المدرسة" : "تم إنشاء المدرسة", "success");
+        closeModal();
+        await renderTable();
+      }
+    });
+
+    async function renderTable() {
+      const wrap = document.getElementById("schools-table-wrap");
+      const schools = await guard(() => listSchools());
+      if (!schools) return;
+
+      if (schools.length === 0) {
+        wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">لا توجد مدارس بعد</div><p>ابدأ بإضافة أول مدرسة على المنصة</p></div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>الاسم</th><th>المعرف</th><th>الحالة</th><th>تاريخ الإنشاء</th><th></th></tr></thead>
+            <tbody>
+              ${schools
+                .map(
+                  (s) => `
+                <tr>
+                  <td>${escapeHtml(s.name)}</td>
+                  <td>${escapeHtml(s.slug)}</td>
+                  <td><span class="badge ${s.is_active ? "badge-success" : "badge-neutral"}">${s.is_active ? "نشطة" : "معطلة"}</span></td>
+                  <td>${formatDate(s.created_at)}</td>
+                  <td class="flex gap-8">
+                    <button class="btn btn-ghost btn-sm" data-edit="${s.id}">تعديل</button>
+                    <button class="btn btn-ghost btn-sm" data-add-admin="${s.id}">إنشاء مدير</button>
+                    ${s.is_active ? `<button class="btn btn-danger btn-sm" data-deactivate="${s.id}">تعطيل</button>` : ""}
+                  </td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      wrap.querySelectorAll("[data-edit]").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const school = schools.find((s) => s.id === btn.dataset.edit);
+          openModal(school);
+        })
+      );
+      wrap.querySelectorAll("[data-deactivate]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!confirm("هل تريد تعطيل هذه المدرسة؟")) return;
+          const result = await guard(() => deactivateSchool(btn.dataset.deactivate));
+          if (result) {
+            showToast("تم تعطيل المدرسة", "success");
+            await renderTable();
+          }
+        })
+      );
+      wrap.querySelectorAll("[data-add-admin]").forEach((btn) =>
+        btn.addEventListener("click", () => openAdminModal(btn.dataset.addAdmin))
+      );
+    }
+
+    await renderTable();
+  </script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>الجدول الأسبوعي — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">تعيين حصة</h3>
+        <button class="modal-close" id="modal-close" aria-label="إغلاق">✕</button>
+      </div>
+      <form id="slot-form">
+        <p class="text-muted" id="slot-info" style="margin-bottom:16px;"></p>
+        <div class="field">
+          <label for="f-subject">المادة</label>
+          <select id="f-subject"><option value="">— فارغة —</option></select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="modal-cancel">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { listSections } from "/js/api/sections.js";
+    import { listSubjects } from "/js/api/subjects.js";
+    import { listSchedule, createScheduleEntry, deleteScheduleEntry } from "/js/api/schedule.js";
+    import { guard, showToast, escapeHtml } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["school_admin", "branch_admin"]);
+    const content = mountShell(profile, "schedule");
+
+    const DAYS = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+    const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+    content.innerHTML = `
+      <h1>الجدول الأسبوعي</h1>
+      <p class="text-muted" style="margin-bottom:20px;">اختر شعبة، ثم اضغط أي خلية لتعيين أو إزالة مادة في ذلك اليوم/الحصة</p>
+      <div class="field" style="max-width:320px; margin-bottom:20px;">
+        <select id="section-select"><option value="">اختر شعبة...</option></select>
+      </div>
+      <div id="grid-wrap"></div>
+    `;
+
+    const sections = (await guard(() => listSections())) ?? [];
+    const sectionSelect = document.getElementById("section-select");
+    sectionSelect.insertAdjacentHTML(
+      "beforeend",
+      sections.map((s) => `<option value="${s.id}" data-class-id="${s.classes?.id ?? s.class_id ?? ""}">${escapeHtml(s.classes?.name ?? "")} - ${escapeHtml(s.name)}</option>`).join("")
+    );
+
+    let currentSubjects = [];
+    let currentEntries = [];
+
+    async function renderGrid() {
+      const wrap = document.getElementById("grid-wrap");
+      const sectionId = sectionSelect.value;
+      if (!sectionId) {
+        wrap.innerHTML = "";
+        return;
+      }
+      const classId = sectionSelect.selectedOptions[0]?.dataset.classId;
+
+      [currentSubjects, currentEntries] = await Promise.all([
+        guard(() => listSubjects({ classId })).then((r) => r ?? []),
+        guard(() => listSchedule({ sectionId })).then((r) => r ?? []),
+      ]);
+
+      const byCell = new Map(currentEntries.map((e) => [`${e.day}-${e.period}`, e]));
+
+      wrap.innerHTML = `
+        <div class="table-wrap">
+          <table class="table" style="min-width:800px;">
+            <thead>
+              <tr>
+                <th>الحصة</th>
+                ${DAYS.map((d) => `<th>${d}</th>`).join("")}
+              </tr>
+            </thead>
+            <tbody>
+              ${PERIODS.map(
+                (period) => `
+                <tr>
+                  <td style="font-weight:700;">${period}</td>
+                  ${DAYS.map((_, day) => {
+                    const entry = byCell.get(`${day}-${period}`);
+                    return `
+                      <td>
+                        <button type="button" class="btn btn-sm ${entry ? "btn-primary" : "btn-ghost"}" style="width:100%;" data-day="${day}" data-period="${period}" data-entry-id="${entry?.id ?? ""}">
+                          ${entry ? escapeHtml(entry.subjects?.name ?? "—") : "+ فارغة"}
+                        </button>
+                      </td>`;
+                  }).join("")}
+                </tr>`
+              ).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      wrap.querySelectorAll("[data-day]").forEach((btn) =>
+        btn.addEventListener("click", () => openSlotModal(sectionId, Number(btn.dataset.day), Number(btn.dataset.period), btn.dataset.entryId || null))
+      );
+    }
+
+    const overlay = document.getElementById("modal-overlay");
+    const form = document.getElementById("slot-form");
+    document.getElementById("modal-close").addEventListener("click", closeModal);
+    document.getElementById("modal-cancel").addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+    function closeModal() {
+      overlay.classList.remove("is-open");
+      form.reset();
+    }
+
+    let activeSlot = null;
+
+    function openSlotModal(sectionId, day, period, entryId) {
+      activeSlot = { sectionId, day, period, entryId };
+      const entry = currentEntries.find((e) => e.id === entryId);
+      document.getElementById("slot-info").textContent = `${DAYS[day]} — الحصة ${period}`;
+      document.getElementById("f-subject").innerHTML =
+        `<option value="">— فارغة —</option>` +
+        currentSubjects.map((s) => `<option value="${s.id}" ${entry?.subject_id === s.id ? "selected" : ""}>${escapeHtml(s.name)}</option>`).join("");
+      overlay.classList.add("is-open");
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const subjectId = document.getElementById("f-subject").value;
+      const { sectionId, day, period, entryId } = activeSlot;
+
+      if (entryId) {
+        const result = await guard(() => deleteScheduleEntry(entryId));
+        if (!result) return;
+      }
+      if (subjectId) {
+        const result = await guard(() =>
+          createScheduleEntry({ school_id: profile.school_id, section_id: sectionId, subject_id: subjectId, day, period })
+        );
+        if (!result) return;
+      }
+      showToast("تم الحفظ", "success");
+      closeModal();
+      await renderGrid();
+    });
+
+    sectionSelect.addEventListener("change", renderGrid);
+  </script>
+</body>
+</html>

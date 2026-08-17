@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة ولي الأمر — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { supabase } from "/js/lib/supabase-client.js";
+    import { getStudentAttendanceRate, getStudentGradeSummary } from "/js/api/analytics.js";
+    import { guard, escapeHtml } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["parent"]);
+    const content = mountShell(profile, "dashboard");
+
+    const children = await guard(async () => {
+      const { data, error } = await supabase
+        .from("students")
+        .select("id, full_name, sections(name, classes(name))")
+        .eq("parent_id", profile.id)
+        .eq("is_active", true);
+      if (error) throw error;
+      return data;
+    });
+
+    content.innerHTML = `
+      <h1>مرحباً، ${escapeHtml(profile.full_name)}</h1>
+      <p class="text-muted" style="margin-bottom:24px;">نظرة سريعة على أبنائك</p>
+      <div id="children-wrap" class="grid grid-3"></div>
+    `;
+
+    const wrap = document.getElementById("children-wrap");
+
+    if (!children || children.length === 0) {
+      wrap.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-state-title">لا يوجد أبناء مرتبطون بحسابك بعد</div><p>تواصل مع إدارة المدرسة لربط أبنائك بحسابك</p></div></div>`;
+    } else {
+      const cards = await Promise.all(
+        children.map(async (c) => {
+          const [rate, grades] = await Promise.all([
+            guard(() => getStudentAttendanceRate(c.id)),
+            guard(() => getStudentGradeSummary(c.id)),
+          ]);
+          const avgGrade = grades?.length
+            ? Math.round(grades.filter((g) => g.weighted_percent != null).reduce((sum, g, _, arr) => sum + g.weighted_percent / (arr.length || 1), 0))
+            : null;
+          return `
+            <a href="/parent/student-profile.html?id=${c.id}" class="card" style="display:block; color:inherit; text-decoration:none;">
+              <div class="card-title">${escapeHtml(c.full_name)}</div>
+              <div class="card-subtitle">${c.sections ? `${escapeHtml(c.sections.classes?.name ?? "")} - ${escapeHtml(c.sections.name)}` : "لم يُحدَّد الصف بعد"}</div>
+              <div class="grid grid-2" style="gap:12px;">
+                <div>
+                  <div class="text-muted" style="font-size:12px;">الحضور</div>
+                  <div style="font-weight:800; font-size:18px;">${rate != null ? rate + "%" : "—"}</div>
+                </div>
+                <div>
+                  <div class="text-muted" style="font-size:12px;">المعدل العام</div>
+                  <div style="font-weight:800; font-size:18px;">${avgGrade != null ? avgGrade + "%" : "—"}</div>
+                </div>
+              </div>
+            </a>`;
+        })
+      );
+      wrap.innerHTML = cards.join("");
+    }
+  </script>
+</body>
+</html>

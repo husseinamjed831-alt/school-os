@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>حضور الموظفين — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { getStaffAttendanceForDate, bulkSaveStaffAttendance } from "/js/api/staff-attendance.js";
+    import { guard, showToast, escapeHtml } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["school_admin", "branch_admin"]);
+    const content = mountShell(profile, "staff-attendance");
+
+    const STATUS_LABEL = { present: "حاضر", absent: "غائب", late: "متأخر", excused: "مجاز" };
+    const ROLE_LABEL = { teacher: "معلم", branch_admin: "مدير فرع", school_admin: "مدير مدرسة" };
+
+    content.innerHTML = `
+      <h1>حضور الموظفين</h1>
+      <p class="text-muted" style="margin-bottom:20px;">تسجيل حضور المعلمين ومديري الفروع يومياً</p>
+      <div class="field" style="max-width:220px; margin-bottom:20px;">
+        <label for="date-input">التاريخ</label>
+        <input type="date" id="date-input" />
+      </div>
+      <div id="roster-wrap"></div>
+    `;
+
+    const dateInput = document.getElementById("date-input");
+    dateInput.value = new Date().toISOString().slice(0, 10);
+
+    async function renderRoster() {
+      const wrap = document.getElementById("roster-wrap");
+      const date = dateInput.value;
+      const roster = (await guard(() => getStaffAttendanceForDate(date))) ?? [];
+      if (roster.length === 0) {
+        wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">لا يوجد موظفون بعد</div></div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>الاسم</th><th>الدور</th><th>الحالة</th></tr></thead>
+            <tbody>
+              ${roster
+                .map(
+                  (r) => `
+                <tr data-profile-id="${r.profile_id}">
+                  <td>${escapeHtml(r.full_name)}</td>
+                  <td><span class="badge badge-neutral">${ROLE_LABEL[r.role] ?? r.role}</span></td>
+                  <td class="flex gap-8" style="flex-wrap:wrap;">
+                    ${Object.entries(STATUS_LABEL)
+                      .map(
+                        ([value, label]) => `
+                      <button type="button" class="btn btn-sm status-btn ${r.status === value ? "btn-primary" : "btn-ghost"}" data-status="${value}">${label}</button>`
+                      )
+                      .join("")}
+                  </td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+        <div class="flex-between" style="margin-top:16px;">
+          <p class="text-muted" id="progress-hint"></p>
+          <button class="btn btn-success" id="save-btn">حفظ الحضور</button>
+        </div>
+      `;
+
+      const state = new Map(roster.map((r) => [r.profile_id, r.status]));
+      updateProgress();
+
+      wrap.querySelectorAll("tr[data-profile-id]").forEach((row) => {
+        const profileId = row.dataset.profileId;
+        row.querySelectorAll(".status-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            state.set(profileId, btn.dataset.status);
+            row.querySelectorAll(".status-btn").forEach((b) => {
+              b.classList.toggle("btn-primary", b === btn);
+              b.classList.toggle("btn-ghost", b !== btn);
+            });
+            updateProgress();
+          });
+        });
+      });
+
+      function updateProgress() {
+        const done = [...state.values()].filter(Boolean).length;
+        document.getElementById("progress-hint").textContent = `${done} من ${roster.length} تم تحديدهم`;
+      }
+
+      document.getElementById("save-btn").addEventListener("click", async () => {
+        const records = [...state.entries()].filter(([, status]) => status).map(([profile_id, status]) => ({ profile_id, status }));
+        if (records.length === 0) {
+          showToast("لم يتم تحديد أي حالة بعد", "danger");
+          return;
+        }
+        const result = await guard(() =>
+          bulkSaveStaffAttendance({ school_id: profile.school_id, date, recorded_by: profile.id, records })
+        );
+        if (result) showToast("تم حفظ الحضور بنجاح", "success");
+      });
+    }
+
+    dateInput.addEventListener("change", renderRoster);
+    await renderRoster();
+  </script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ملف الطالب — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { renderStudentProfile } from "/js/lib/student-profile-view.js";
+    import { createTeacherNote, createBehaviorRecord } from "/js/api/student-records.js";
+    import { guard, showToast } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["school_admin", "branch_admin", "teacher"]);
+    const content = mountShell(profile, "students");
+
+    const studentId = new URLSearchParams(window.location.search).get("id");
+    if (!studentId) {
+      content.innerHTML = `<div class="empty-state"><div class="empty-state-title">لم يتم تحديد طالب</div></div>`;
+    } else {
+      content.innerHTML = `
+        <a href="/admin/students.html" class="text-muted" style="display:inline-block; margin-bottom:16px;">← رجوع لقائمة الطلاب</a>
+        <div id="profile-root"></div>
+        <div class="grid grid-2" style="margin-top:20px; align-items:start;">
+          <div class="card">
+            <div class="card-title">إضافة ملاحظة</div>
+            <form id="note-form">
+              <div class="field"><label for="note-text">الملاحظة</label><textarea id="note-text" rows="3" required></textarea></div>
+              <label class="flex gap-8" style="margin-bottom:14px; font-size:13px; cursor:pointer;">
+                <input type="checkbox" id="note-visible" /> مشاركتها مع ولي الأمر والطالب
+              </label>
+              <button type="submit" class="btn btn-primary btn-sm">إضافة الملاحظة</button>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-title">إضافة ملاحظة سلوكية</div>
+            <form id="behavior-form">
+              <div class="field">
+                <label for="behavior-category">النوع</label>
+                <select id="behavior-category">
+                  <option value="positive">إيجابي</option>
+                  <option value="concern">يستدعي الانتباه</option>
+                </select>
+              </div>
+              <div class="field"><label for="behavior-text">التفاصيل</label><textarea id="behavior-text" rows="3" required></textarea></div>
+              <button type="submit" class="btn btn-primary btn-sm">إضافة</button>
+            </form>
+          </div>
+        </div>
+      `;
+
+      const root = document.getElementById("profile-root");
+      async function refresh() {
+        await renderStudentProfile(root, studentId, { includeStaffSections: true });
+      }
+      await refresh();
+
+      document.getElementById("note-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const result = await guard(() =>
+          createTeacherNote({
+            student_id: studentId,
+            note: document.getElementById("note-text").value.trim(),
+            is_visible_to_parent: document.getElementById("note-visible").checked,
+            school_id: profile.school_id,
+            created_by: profile.id,
+          })
+        );
+        if (result) {
+          showToast("تمت إضافة الملاحظة", "success");
+          e.target.reset();
+          await refresh();
+        }
+      });
+
+      document.getElementById("behavior-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const result = await guard(() =>
+          createBehaviorRecord({
+            student_id: studentId,
+            category: document.getElementById("behavior-category").value,
+            note: document.getElementById("behavior-text").value.trim(),
+            school_id: profile.school_id,
+            recorded_by: profile.id,
+          })
+        );
+        if (result) {
+          showToast("تمت الإضافة", "success");
+          e.target.reset();
+          await refresh();
+        }
+      });
+    }
+  </script>
+</body>
+</html>

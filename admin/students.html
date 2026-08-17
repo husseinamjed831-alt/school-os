@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>الطلاب — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">طالب جديد</h3>
+        <button class="modal-close" id="modal-close" aria-label="إغلاق">✕</button>
+      </div>
+      <form id="student-form">
+        <input type="hidden" id="f-id" />
+        <div class="field"><label for="f-name">الاسم الكامل</label><input id="f-name" required /></div>
+        <div class="field"><label for="f-birth">تاريخ الميلاد</label><input type="date" id="f-birth" /></div>
+        <div class="field"><label for="f-section">الشعبة</label><select id="f-section"><option value="">— بدون شعبة —</option></select></div>
+        <div class="field"><label for="f-parent">ولي الأمر</label><select id="f-parent"><option value="">— بدون ولي أمر —</option></select></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="modal-cancel">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { listStudents, createStudent, updateStudent, deactivateStudent } from "/js/api/students.js";
+    import { listSections } from "/js/api/sections.js";
+    import { listUsers } from "/js/api/users.js";
+    import { guard, showToast, escapeHtml, formatDate, debounce } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["school_admin", "branch_admin"]);
+    const content = mountShell(profile, "students");
+
+    content.innerHTML = `
+      <div class="flex-between" style="margin-bottom:20px;">
+        <div>
+          <h1>الطلاب</h1>
+          <p class="text-muted">إدارة سجلات الطلاب وربطهم بالشعب وأولياء الأمور</p>
+        </div>
+        <button class="btn btn-primary" id="add-btn">+ طالب جديد</button>
+      </div>
+      <div class="flex gap-12" style="margin-bottom:18px;">
+        <div class="field search-input" style="margin-bottom:0; flex:1;">
+          <input type="text" id="search-input" placeholder="ابحث بالاسم..." />
+        </div>
+        <div class="field" style="margin-bottom:0; min-width:200px;">
+          <select id="section-filter"><option value="">كل الشعب</option></select>
+        </div>
+      </div>
+      <div id="table-wrap"></div>
+    `;
+
+    let sections = [];
+    let parents = [];
+    let students = [];
+
+    async function loadReferenceData() {
+      sections = (await guard(() => listSections())) ?? [];
+      parents = (await guard(() => listUsers({ role: "parent" }))) ?? [];
+
+      const sectionOptions = sections
+        .map((s) => `<option value="${s.id}">${escapeHtml(s.classes?.name ?? "")} - ${escapeHtml(s.name)}</option>`)
+        .join("");
+      document.getElementById("f-section").insertAdjacentHTML("beforeend", sectionOptions);
+      document.getElementById("section-filter").insertAdjacentHTML("beforeend", sectionOptions);
+
+      document.getElementById("f-parent").insertAdjacentHTML(
+        "beforeend",
+        parents.map((p) => `<option value="${p.id}">${escapeHtml(p.full_name)}${p.phone ? " - " + escapeHtml(p.phone) : ""}</option>`).join("")
+      );
+    }
+
+    const overlay = document.getElementById("modal-overlay");
+    const form = document.getElementById("student-form");
+
+    function openModal(student = null) {
+      document.getElementById("modal-title").textContent = student ? "تعديل بيانات طالب" : "طالب جديد";
+      document.getElementById("f-id").value = student?.id ?? "";
+      document.getElementById("f-name").value = student?.full_name ?? "";
+      document.getElementById("f-birth").value = student?.birth_date ?? "";
+      document.getElementById("f-section").value = student?.section_id ?? "";
+      document.getElementById("f-parent").value = student?.parent_id ?? "";
+      overlay.classList.add("is-open");
+    }
+    function closeModal() {
+      overlay.classList.remove("is-open");
+      form.reset();
+    }
+    document.getElementById("add-btn").addEventListener("click", () => openModal());
+    document.getElementById("modal-close").addEventListener("click", closeModal);
+    document.getElementById("modal-cancel").addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("f-id").value;
+      const payload = {
+        full_name: document.getElementById("f-name").value.trim(),
+        birth_date: document.getElementById("f-birth").value || null,
+        section_id: document.getElementById("f-section").value || null,
+        parent_id: document.getElementById("f-parent").value || null,
+      };
+      // branch_id is derived, never chosen directly: a branch_admin's own
+      // branch, or the branch of the section being assigned, or null (school
+      // admin creating a student before any section exists).
+      const selectedSection = sections.find((s) => s.id === payload.section_id);
+      payload.branch_id = profile.branch_id ?? selectedSection?.classes?.branch_id ?? null;
+      if (!id) {
+        payload.school_id = profile.school_id;
+      }
+      const result = await guard(() => (id ? updateStudent(id, payload) : createStudent(payload)));
+      if (result) {
+        showToast(id ? "تم تحديث بيانات الطالب" : "تمت إضافة الطالب", "success");
+        closeModal();
+        await renderTable();
+      }
+    });
+
+    async function renderTable() {
+      const wrap = document.getElementById("table-wrap");
+      const search = document.getElementById("search-input").value.trim();
+      const sectionId = document.getElementById("section-filter").value;
+
+      students = (await guard(() => listStudents({ search, sectionId: sectionId || undefined }))) ?? [];
+
+      if (students.length === 0) {
+        wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">لا يوجد طلاب مطابقون</div><p>جرّب تعديل البحث أو أضف طالباً جديداً</p></div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>الاسم</th><th>الصف والشعبة</th><th>ولي الأمر</th><th>الحالة</th><th></th></tr></thead>
+            <tbody>
+              ${students
+                .map(
+                  (s) => `
+                <tr>
+                  <td>${escapeHtml(s.full_name)}</td>
+                  <td>${s.sections ? `${escapeHtml(s.sections.classes?.name ?? "")} - ${escapeHtml(s.sections.name)}` : "—"}</td>
+                  <td>${s.parent ? escapeHtml(s.parent.full_name) : "—"}</td>
+                  <td><span class="badge ${s.is_active ? "badge-success" : "badge-neutral"}">${s.is_active ? "نشط" : "معطل"}</span></td>
+                  <td class="flex gap-8">
+                    <a class="btn btn-ghost btn-sm" href="/admin/student-profile.html?id=${s.id}">الملف الكامل</a>
+                    <button class="btn btn-ghost btn-sm" data-edit="${s.id}">تعديل</button>
+                    ${s.is_active ? `<button class="btn btn-danger btn-sm" data-deactivate="${s.id}">إلغاء تفعيل</button>` : ""}
+                  </td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      wrap.querySelectorAll("[data-edit]").forEach((btn) =>
+        btn.addEventListener("click", () => openModal(students.find((s) => s.id === btn.dataset.edit)))
+      );
+      wrap.querySelectorAll("[data-deactivate]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!confirm("هل تريد إلغاء تفعيل هذا الطالب؟")) return;
+          const result = await guard(() => deactivateStudent(btn.dataset.deactivate));
+          if (result) {
+            showToast("تم إلغاء التفعيل", "success");
+            await renderTable();
+          }
+        })
+      );
+    }
+
+    document.getElementById("search-input").addEventListener("input", debounce(renderTable, 300));
+    document.getElementById("section-filter").addEventListener("change", renderTable);
+
+    await loadReferenceData();
+    await renderTable();
+  </script>
+</body>
+</html>

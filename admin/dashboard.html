@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة التحكم — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { listStudents } from "/js/api/students.js";
+    import { listUsers } from "/js/api/users.js";
+    import { listBranches } from "/js/api/branches.js";
+    import { listSections } from "/js/api/sections.js";
+    import { guard, escapeHtml } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["school_admin", "branch_admin"]);
+    const content = mountShell(profile, "dashboard");
+
+    content.innerHTML = `
+      <h1>مرحباً، ${escapeHtml(profile.full_name)}</h1>
+      <p class="text-muted" style="margin-bottom:24px;">نظرة عامة على مدرستك</p>
+      <div class="grid grid-4" id="stats"></div>
+      <div class="card" style="margin-top:24px;">
+        <div class="card-title">روابط سريعة</div>
+        <div class="card-subtitle">انتقل مباشرة إلى الأقسام الأكثر استخداماً</div>
+        <div class="flex gap-12" style="flex-wrap:wrap;">
+          <a class="btn btn-ghost" href="/admin/students.html">إدارة الطلاب</a>
+          <a class="btn btn-ghost" href="/admin/setup.html">الهيكل الأكاديمي</a>
+          <a class="btn btn-ghost" href="/admin/users.html">المستخدمون</a>
+        </div>
+      </div>
+    `;
+
+    const statsContainer = document.getElementById("stats");
+
+    function statCard(icon, value, label) {
+      return `
+        <div class="stat-card">
+          <div class="stat-icon">${icon}</div>
+          <div>
+            <div class="stat-value">${value}</div>
+            <div class="stat-label">${label}</div>
+          </div>
+        </div>`;
+    }
+
+    const ICON_STUDENTS = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M6 10.5V16c0 1.5 3 3 6 3s6-1.5 6-3v-5.5"/></svg>`;
+    const ICON_TEACHERS = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>`;
+    const ICON_BRANCHES = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 10 9-6 9 6-9 6-9-6Z"/><path d="M7 12.5V19c0 .5 2.5 2 5 2s5-1.5 5-2v-6.5"/></svg>`;
+    const ICON_SECTIONS = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>`;
+
+    statsContainer.innerHTML = [
+      statCard(ICON_STUDENTS, `<span class="skeleton" style="display:inline-block; width:36px; height:24px;"></span>`, "الطلاب"),
+      statCard(ICON_TEACHERS, `<span class="skeleton" style="display:inline-block; width:36px; height:24px;"></span>`, "المعلمون"),
+      statCard(ICON_BRANCHES, `<span class="skeleton" style="display:inline-block; width:36px; height:24px;"></span>`, "الفروع"),
+      statCard(ICON_SECTIONS, `<span class="skeleton" style="display:inline-block; width:36px; height:24px;"></span>`, "الشعب"),
+    ].join("");
+
+    const [students, teachers, branches, sections] = await Promise.all([
+      guard(() => listStudents()),
+      guard(() => listUsers({ role: "teacher" })),
+      guard(() => listBranches()),
+      guard(() => listSections()),
+    ]);
+
+    statsContainer.innerHTML = [
+      statCard(ICON_STUDENTS, students?.length ?? 0, "الطلاب"),
+      statCard(ICON_TEACHERS, teachers?.length ?? 0, "المعلمون"),
+      statCard(ICON_BRANCHES, branches?.length ?? 0, "الفروع"),
+      statCard(ICON_SECTIONS, sections?.length ?? 0, "الشعب"),
+    ].join("");
+  </script>
+</body>
+</html>

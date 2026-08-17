@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>إعدادات التقييم — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">إضافة</h3>
+        <button class="modal-close" id="modal-close" aria-label="إغلاق">✕</button>
+      </div>
+      <form id="entity-form"></form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { listAssessmentTypes, createAssessmentType, updateAssessmentType, deleteAssessmentType } from "/js/api/assessment-types.js";
+    import { listGradingScales, createGradingScale, updateGradingScale, deleteGradingScale } from "/js/api/grading-scales.js";
+    import { guard, showToast, escapeHtml } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["school_admin"]);
+    const content = mountShell(profile, "grading");
+
+    content.innerHTML = `
+      <h1>إعدادات التقييم</h1>
+      <p class="text-muted" style="margin-bottom:20px;">أنواع التقييم وأوزانها، ومقياس الدرجات المستخدم في تحويل النسبة إلى تقدير</p>
+      <div class="tabs" id="tabs">
+        <button class="tab-btn is-active" data-tab="types">أنواع التقييم</button>
+        <button class="tab-btn" data-tab="scales">مقياس الدرجات</button>
+      </div>
+      <div class="flex-between" style="margin-bottom:16px;">
+        <div id="weight-hint" class="text-muted"></div>
+        <button class="btn btn-primary" id="add-btn">+ إضافة</button>
+      </div>
+      <div id="tab-content"></div>
+    `;
+
+    const overlay = document.getElementById("modal-overlay");
+    const formEl = document.getElementById("entity-form");
+    let activeTab = "types";
+    let cache = { types: [], scales: [] };
+
+    document.getElementById("tabs").addEventListener("click", (e) => {
+      const btn = e.target.closest(".tab-btn");
+      if (!btn) return;
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      activeTab = btn.dataset.tab;
+      renderTab();
+    });
+    document.getElementById("add-btn").addEventListener("click", () => openModal(null));
+    document.getElementById("modal-close").addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+    function closeModal() {
+      overlay.classList.remove("is-open");
+      formEl.innerHTML = "";
+    }
+
+    async function loadAll() {
+      cache.types = (await guard(() => listAssessmentTypes())) ?? [];
+      cache.scales = (await guard(() => listGradingScales())) ?? [];
+    }
+
+    // ---------- Assessment types ----------
+    function typeFormHtml(item) {
+      return `
+        <input type="hidden" id="f-id" value="${item?.id ?? ""}" />
+        <div class="field"><label>الاسم</label><input id="f-name" required value="${escapeHtml(item?.name ?? "")}" placeholder="واجب" /></div>
+        <div class="field"><label>الوزن (%)</label><input type="number" id="f-weight" required min="0" max="100" step="0.5" value="${item?.weight_percent ?? ""}" /></div>
+        <div class="field"><label>المستوى الدراسي (اتركه فارغاً ليشمل الكل)</label><input type="number" id="f-grade" min="1" max="12" value="${item?.grade_level ?? ""}" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost modal-cancel-btn">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>`;
+    }
+    async function submitType(item) {
+      const payload = {
+        name: document.getElementById("f-name").value.trim(),
+        weight_percent: Number(document.getElementById("f-weight").value),
+        grade_level: document.getElementById("f-grade").value ? Number(document.getElementById("f-grade").value) : null,
+        school_id: profile.school_id,
+      };
+      return item ? updateAssessmentType(item.id, payload) : createAssessmentType(payload);
+    }
+    function renderTypes() {
+      const rows = cache.types;
+      const totalWeight = rows.filter((t) => t.is_active).reduce((sum, t) => sum + Number(t.weight_percent), 0);
+      document.getElementById("weight-hint").textContent = `إجمالي الأوزان الحالية: ${totalWeight}%${totalWeight !== 100 ? " — يُفضّل أن يكون المجموع 100%" : ""}`;
+      if (rows.length === 0) return emptyState("لا توجد أنواع تقييم بعد — أضف واحداً ليصبح بإمكان المعلمين إنشاء تقييمات");
+      return tableHtml(
+        ["الاسم", "الوزن", "المستوى الدراسي", ""],
+        rows.map((t) => [
+          escapeHtml(t.name),
+          `${t.weight_percent}%`,
+          t.grade_level ?? "كل المستويات",
+          `<button class="btn btn-ghost btn-sm" data-edit="${t.id}">تعديل</button><button class="btn btn-danger btn-sm" data-delete="${t.id}">حذف</button>`,
+        ])
+      );
+    }
+
+    // ---------- Grading scales ----------
+    function scaleFormHtml(item) {
+      return `
+        <input type="hidden" id="f-id" value="${item?.id ?? ""}" />
+        <div class="field"><label>التقدير</label><input id="f-label" required value="${escapeHtml(item?.label ?? "")}" placeholder="ناجح" /></div>
+        <div class="field"><label>الحد الأدنى (%)</label><input type="number" id="f-min" required min="0" max="100" step="0.5" value="${item?.min_percent ?? ""}" /></div>
+        <div class="field"><label>الحد الأقصى (%)</label><input type="number" id="f-max" required min="0" max="100" step="0.5" value="${item?.max_percent ?? ""}" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost modal-cancel-btn">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>`;
+    }
+    async function submitScale(item) {
+      const payload = {
+        label: document.getElementById("f-label").value.trim(),
+        min_percent: Number(document.getElementById("f-min").value),
+        max_percent: Number(document.getElementById("f-max").value),
+        school_id: profile.school_id,
+      };
+      return item ? updateGradingScale(item.id, payload) : createGradingScale(payload);
+    }
+    function renderScales() {
+      const rows = cache.scales;
+      document.getElementById("weight-hint").textContent = "";
+      if (rows.length === 0) return emptyState("لا يوجد مقياس درجات بعد — بدونه ستُعرض النسبة المئوية فقط دون تقدير");
+      return tableHtml(
+        ["التقدير", "من", "إلى", ""],
+        rows.map((s) => [
+          escapeHtml(s.label),
+          `${s.min_percent}%`,
+          `${s.max_percent}%`,
+          `<button class="btn btn-ghost btn-sm" data-edit="${s.id}">تعديل</button><button class="btn btn-danger btn-sm" data-delete="${s.id}">حذف</button>`,
+        ])
+      );
+    }
+
+    const TAB_CONFIG = {
+      types: { render: renderTypes, formHtml: typeFormHtml, submit: submitType, label: "نوع تقييم" },
+      scales: { render: renderScales, formHtml: scaleFormHtml, submit: submitScale, label: "تقدير" },
+    };
+
+    function emptyState(text) {
+      return `<div class="empty-state"><div class="empty-state-title">${text}</div></div>`;
+    }
+    function tableHtml(headers, rows) {
+      return `
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+            <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody>
+          </table>
+        </div>`;
+    }
+
+    function openModal(item) {
+      const config = TAB_CONFIG[activeTab];
+      document.getElementById("modal-title").textContent = item ? `تعديل ${config.label}` : `${config.label} جديد`;
+      formEl.innerHTML = config.formHtml(item);
+      formEl.querySelector(".modal-cancel-btn")?.addEventListener("click", closeModal);
+      formEl.onsubmit = async (e) => {
+        e.preventDefault();
+        const result = await guard(() => config.submit(item));
+        if (result) {
+          showToast("تم الحفظ بنجاح", "success");
+          overlay.classList.remove("is-open");
+          await loadAll();
+          renderTab();
+        }
+      };
+      overlay.classList.add("is-open");
+    }
+
+    function renderTab() {
+      const container = document.getElementById("tab-content");
+      container.innerHTML = TAB_CONFIG[activeTab].render();
+      const findItem = (id) => cache[activeTab].find((r) => r.id === id);
+      container.querySelectorAll("[data-edit]").forEach((btn) =>
+        btn.addEventListener("click", () => openModal(findItem(btn.dataset.edit)))
+      );
+      container.querySelectorAll("[data-delete]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!confirm("هل تريد الحذف؟")) return;
+          const fn = activeTab === "types" ? deleteAssessmentType : deleteGradingScale;
+          const result = await guard(() => fn(btn.dataset.delete));
+          if (result) {
+            showToast("تم الحذف", "success");
+            await loadAll();
+            renderTab();
+          }
+        })
+      );
+    }
+
+    await loadAll();
+    renderTab();
+  </script>
+</body>
+</html>

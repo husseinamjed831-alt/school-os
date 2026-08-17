@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>التقييمات والدرجات — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>تقييم جديد</h3>
+        <button class="modal-close" id="modal-close" aria-label="إغلاق">✕</button>
+      </div>
+      <form id="assessment-form">
+        <div class="field"><label for="f-title">العنوان</label><input id="f-title" required placeholder="اختبار الوحدة الأولى" /></div>
+        <div class="field"><label for="f-type">نوع التقييم</label><select id="f-type" required></select></div>
+        <div class="field"><label for="f-max">الدرجة العظمى</label><input type="number" id="f-max" required min="1" value="100" /></div>
+        <div class="field"><label for="f-date">التاريخ</label><input type="date" id="f-date" required /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="modal-cancel">إلغاء</button>
+          <button type="submit" class="btn btn-primary">إنشاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { listMySubjects } from "/js/api/subjects.js";
+    import { listAssessmentTypes } from "/js/api/assessment-types.js";
+    import { listAssessments, createAssessment } from "/js/api/assessments.js";
+    import { getScoreSheet, bulkSaveScores } from "/js/api/assessment-scores.js";
+    import { guard, showToast, escapeHtml, formatDate } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["teacher"]);
+    const content = mountShell(profile, "assessments");
+
+    content.innerHTML = `
+      <h1>التقييمات والدرجات</h1>
+      <p class="text-muted" style="margin-bottom:20px;">أنشئ تقييماً وأدخل درجات الطلاب</p>
+      <div class="flex-between" style="margin-bottom:18px;">
+        <div class="field" style="margin-bottom:0; min-width:260px;">
+          <select id="subject-select"><option value="">اختر مادة...</option></select>
+        </div>
+        <button class="btn btn-primary" id="new-assessment-btn" disabled>+ تقييم جديد</button>
+      </div>
+      <div id="assessments-wrap"></div>
+      <div id="score-sheet-wrap" style="margin-top:24px;"></div>
+    `;
+
+    const mySubjects = (await guard(() => listMySubjects())) ?? [];
+    const assessmentTypes = (await guard(() => listAssessmentTypes())) ?? [];
+
+    const subjectSelect = document.getElementById("subject-select");
+    const newBtn = document.getElementById("new-assessment-btn");
+
+    if (mySubjects.length === 0) {
+      document.getElementById("assessments-wrap").innerHTML = `<div class="empty-state"><div class="empty-state-title">لا توجد مواد مسندة إليك بعد</div></div>`;
+    } else {
+      subjectSelect.insertAdjacentHTML(
+        "beforeend",
+        mySubjects.map((s) => `<option value="${s.id}" data-class-id="${s.classes?.id ?? s.class_id}">${escapeHtml(s.name)} - ${escapeHtml(s.classes?.name ?? "")}</option>`).join("")
+      );
+    }
+
+    document.getElementById("f-type").innerHTML = assessmentTypes
+      .map((t) => `<option value="${t.id}">${escapeHtml(t.name)} (${t.weight_percent}%)</option>`)
+      .join("");
+    if (assessmentTypes.length === 0) {
+      newBtn.disabled = true;
+      newBtn.title = "لا توجد أنواع تقييم معرّفة — اطلب من إدارة المدرسة إعدادها";
+    }
+
+    const overlay = document.getElementById("modal-overlay");
+    const form = document.getElementById("assessment-form");
+    document.getElementById("modal-close").addEventListener("click", closeModal);
+    document.getElementById("modal-cancel").addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+    function closeModal() {
+      overlay.classList.remove("is-open");
+      form.reset();
+    }
+
+    newBtn.addEventListener("click", () => {
+      document.getElementById("f-date").value = new Date().toISOString().slice(0, 10);
+      overlay.classList.add("is-open");
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const result = await guard(() =>
+        createAssessment({
+          title: document.getElementById("f-title").value.trim(),
+          assessment_type_id: document.getElementById("f-type").value,
+          max_score: Number(document.getElementById("f-max").value),
+          assessment_date: document.getElementById("f-date").value,
+          subject_id: subjectSelect.value,
+          school_id: profile.school_id,
+          created_by: profile.id,
+        })
+      );
+      if (result) {
+        showToast("تم إنشاء التقييم", "success");
+        closeModal();
+        await renderAssessments();
+      }
+    });
+
+    async function renderAssessments() {
+      const wrap = document.getElementById("assessments-wrap");
+      document.getElementById("score-sheet-wrap").innerHTML = "";
+      const subjectId = subjectSelect.value;
+      newBtn.disabled = !subjectId || assessmentTypes.length === 0;
+      if (!subjectId) {
+        wrap.innerHTML = "";
+        return;
+      }
+
+      const assessments = (await guard(() => listAssessments({ subjectId }))) ?? [];
+      if (assessments.length === 0) {
+        wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">لا توجد تقييمات لهذه المادة بعد</div></div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>العنوان</th><th>النوع</th><th>التاريخ</th><th>الدرجة العظمى</th><th></th></tr></thead>
+            <tbody>
+              ${assessments
+                .map(
+                  (a) => `
+                <tr>
+                  <td>${escapeHtml(a.title)}</td>
+                  <td><span class="badge badge-primary">${escapeHtml(a.assessment_types?.name ?? "")}</span></td>
+                  <td>${formatDate(a.assessment_date)}</td>
+                  <td>${a.max_score}</td>
+                  <td><button class="btn btn-ghost btn-sm" data-score="${a.id}">إدخال الدرجات</button></td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      const classId = subjectSelect.selectedOptions[0]?.dataset.classId;
+      wrap.querySelectorAll("[data-score]").forEach((btn) =>
+        btn.addEventListener("click", () => renderScoreSheet(btn.dataset.score, classId, assessments.find((a) => a.id === btn.dataset.score)))
+      );
+    }
+
+    async function renderScoreSheet(assessmentId, classId, assessment) {
+      const wrap = document.getElementById("score-sheet-wrap");
+      const sheet = (await guard(() => getScoreSheet(assessmentId, classId))) ?? [];
+      if (sheet.length === 0) {
+        wrap.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-state-title">لا يوجد طلاب في هذا الصف</div></div></div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <div class="card">
+          <div class="card-title">إدخال الدرجات — ${escapeHtml(assessment?.title ?? "")}</div>
+          <div class="card-subtitle">الدرجة العظمى: ${assessment?.max_score ?? 100}</div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>الطالب</th><th>الدرجة</th><th>لم يُسلَّم</th></tr></thead>
+              <tbody>
+                ${sheet
+                  .map(
+                    (s) => `
+                  <tr data-student-id="${s.student_id}">
+                    <td>${escapeHtml(s.full_name)}</td>
+                    <td><input type="number" class="score-input" min="0" max="${assessment?.max_score ?? 100}" step="0.5" value="${s.score ?? ""}" ${s.is_missing ? "disabled" : ""} /></td>
+                    <td><input type="checkbox" class="missing-checkbox" ${s.is_missing ? "checked" : ""} /></td>
+                  </tr>`
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+          <button class="btn btn-success" id="save-scores-btn" style="margin-top:16px;">حفظ الدرجات</button>
+        </div>
+      `;
+
+      wrap.querySelectorAll("tr[data-student-id]").forEach((row) => {
+        const checkbox = row.querySelector(".missing-checkbox");
+        const scoreInput = row.querySelector(".score-input");
+        checkbox.addEventListener("change", () => {
+          scoreInput.disabled = checkbox.checked;
+          if (checkbox.checked) scoreInput.value = "";
+        });
+      });
+
+      document.getElementById("save-scores-btn").addEventListener("click", async () => {
+        const entries = [...wrap.querySelectorAll("tr[data-student-id]")].map((row) => {
+          const isMissing = row.querySelector(".missing-checkbox").checked;
+          const rawScore = row.querySelector(".score-input").value;
+          return {
+            student_id: row.dataset.studentId,
+            is_missing: isMissing,
+            score: isMissing || rawScore === "" ? null : Number(rawScore),
+          };
+        });
+        const result = await guard(() =>
+          bulkSaveScores({ school_id: profile.school_id, assessment_id: assessmentId, graded_by: profile.id, entries })
+        );
+        if (result) showToast("تم حفظ الدرجات", "success");
+      });
+    }
+
+    subjectSelect.addEventListener("change", renderAssessments);
+  </script>
+</body>
+</html>

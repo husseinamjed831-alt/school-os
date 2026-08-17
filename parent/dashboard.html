@@ -14,6 +14,7 @@
     import { mountShell } from "/js/lib/shell.js";
     import { supabase } from "/js/lib/supabase-client.js";
     import { getStudentAttendanceRate, getStudentGradeSummary } from "/js/api/analytics.js";
+    import { getStudentBalance } from "/js/api/finance.js";
     import { guard, escapeHtml } from "/js/lib/utils.js";
 
     const profile = await requireRole(["parent"]);
@@ -42,9 +43,10 @@
     } else {
       const cards = await Promise.all(
         children.map(async (c) => {
-          const [rate, grades] = await Promise.all([
+          const [rate, grades, balance] = await Promise.all([
             guard(() => getStudentAttendanceRate(c.id)),
             guard(() => getStudentGradeSummary(c.id)),
+            guard(() => getStudentBalance(c.id)),
           ]);
           const avgGrade = grades?.length
             ? Math.round(grades.filter((g) => g.weighted_percent != null).reduce((sum, g, _, arr) => sum + g.weighted_percent / (arr.length || 1), 0))
@@ -53,7 +55,7 @@
             <a href="/parent/student-profile.html?id=${c.id}" class="card" style="display:block; color:inherit; text-decoration:none;">
               <div class="card-title">${escapeHtml(c.full_name)}</div>
               <div class="card-subtitle">${c.sections ? `${escapeHtml(c.sections.classes?.name ?? "")} - ${escapeHtml(c.sections.name)}` : "لم يُحدَّد الصف بعد"}</div>
-              <div class="grid grid-2" style="gap:12px;">
+              <div class="grid grid-2" style="gap:12px; margin-bottom:12px;">
                 <div>
                   <div class="text-muted" style="font-size:12px;">الحضور</div>
                   <div style="font-weight:800; font-size:18px;">${rate != null ? rate + "%" : "—"}</div>
@@ -63,6 +65,14 @@
                   <div style="font-weight:800; font-size:18px;">${avgGrade != null ? avgGrade + "%" : "—"}</div>
                 </div>
               </div>
+              ${
+                balance
+                  ? `<div style="border-top:1px solid var(--border); padding-top:10px;">
+                      <div class="text-muted" style="font-size:12px;">المتبقي من القسط</div>
+                      <div style="font-weight:800; font-size:16px; color:${balance.remaining > 0 ? "var(--danger)" : "var(--success)"};">${Number(balance.remaining).toLocaleString("ar")} ${escapeHtml(balance.currency)}</div>
+                    </div>`
+                  : ""
+              }
             </a>`;
         })
       );

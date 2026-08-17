@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>المالية — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <div class="modal-overlay" id="fee-modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="fee-modal-title">قسط جديد</h3>
+        <button class="modal-close" id="fee-modal-close" aria-label="إغلاق">✕</button>
+      </div>
+      <form id="fee-form">
+        <input type="hidden" id="f-fee-id" />
+        <div class="field"><label for="f-year">السنة الدراسية</label><select id="f-year"></select></div>
+        <div class="field"><label for="f-grade">المستوى الدراسي</label><input type="number" id="f-grade" min="1" max="12" required /></div>
+        <div class="field"><label for="f-amount">القسط السنوي</label><input type="number" id="f-amount" min="0" step="0.01" required /></div>
+        <div class="field"><label for="f-currency">العملة</label><input id="f-currency" value="IQD" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="fee-modal-cancel">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { listAcademicYears } from "/js/api/academic-years.js";
+    import { listFees, createFee, updateFee, deleteFee, listPayments, createPayment, getStudentBalance } from "/js/api/finance.js";
+    import { listStudents } from "/js/api/students.js";
+    import { guard, showToast, escapeHtml, formatDate, debounce } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["school_admin", "branch_admin"]);
+    const content = mountShell(profile, "finance");
+
+    content.innerHTML = `
+      <h1>المالية</h1>
+      <p class="text-muted" style="margin-bottom:20px;">الأقساط السنوية والمدفوعات</p>
+      <div class="tabs" id="tabs">
+        <button class="tab-btn is-active" data-tab="fees">الأقساط</button>
+        <button class="tab-btn" data-tab="payments">مدفوعات طالب</button>
+      </div>
+      <div id="tab-content"></div>
+    `;
+
+    const years = (await guard(() => listAcademicYears())) ?? [];
+    document.getElementById("f-year").innerHTML = years
+      .map((y) => `<option value="${y.id}">${escapeHtml(y.label)}${y.is_current ? " (الحالية)" : ""}</option>`)
+      .join("");
+
+    let activeTab = "fees";
+    document.getElementById("tabs").addEventListener("click", (e) => {
+      const btn = e.target.closest(".tab-btn");
+      if (!btn) return;
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      activeTab = btn.dataset.tab;
+      renderTab();
+    });
+
+    // ---------- Fees tab ----------
+    let feesCache = [];
+    async function renderFeesTab() {
+      const container = document.getElementById("tab-content");
+      feesCache = (await guard(() => listFees())) ?? [];
+      container.innerHTML = `
+        <div class="flex-between" style="margin-bottom:16px;">
+          <div></div>
+          <button class="btn btn-primary" id="new-fee-btn">+ قسط جديد</button>
+        </div>
+        <div id="fees-table-wrap"></div>
+      `;
+      document.getElementById("new-fee-btn").addEventListener("click", () => openFeeModal(null));
+      renderFeesTable();
+    }
+    function renderFeesTable() {
+      const wrap = document.getElementById("fees-table-wrap");
+      if (feesCache.length === 0) {
+        wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">لا توجد أقساط معرّفة بعد</div></div>`;
+        return;
+      }
+      wrap.innerHTML = `
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>المستوى</th><th>السنة</th><th>القسط السنوي</th><th></th></tr></thead>
+            <tbody>
+              ${feesCache
+                .map(
+                  (f) => `
+                <tr>
+                  <td>${f.grade_level}</td>
+                  <td>${escapeHtml(f.academic_years?.label ?? "—")}${f.academic_years?.is_current ? ` <span class="badge badge-primary">الحالية</span>` : ""}</td>
+                  <td>${Number(f.annual_amount).toLocaleString("ar")} ${escapeHtml(f.currency)}</td>
+                  <td class="flex gap-8">
+                    <button class="btn btn-ghost btn-sm" data-edit="${f.id}">تعديل</button>
+                    <button class="btn btn-danger btn-sm" data-delete="${f.id}">حذف</button>
+                  </td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>`;
+      wrap.querySelectorAll("[data-edit]").forEach((btn) =>
+        btn.addEventListener("click", () => openFeeModal(feesCache.find((f) => f.id === btn.dataset.edit)))
+      );
+      wrap.querySelectorAll("[data-delete]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!confirm("هل تريد حذف هذا القسط؟")) return;
+          const result = await guard(() => deleteFee(btn.dataset.delete));
+          if (result) {
+            showToast("تم الحذف", "success");
+            await renderFeesTab();
+          }
+        })
+      );
+    }
+
+    const feeOverlay = document.getElementById("fee-modal-overlay");
+    const feeForm = document.getElementById("fee-form");
+    document.getElementById("fee-modal-close").addEventListener("click", closeFeeModal);
+    document.getElementById("fee-modal-cancel").addEventListener("click", closeFeeModal);
+    feeOverlay.addEventListener("click", (e) => { if (e.target === feeOverlay) closeFeeModal(); });
+    function closeFeeModal() {
+      feeOverlay.classList.remove("is-open");
+      feeForm.reset();
+    }
+    function openFeeModal(fee) {
+      document.getElementById("fee-modal-title").textContent = fee ? "تعديل قسط" : "قسط جديد";
+      document.getElementById("f-fee-id").value = fee?.id ?? "";
+      document.getElementById("f-year").value = fee?.academic_year_id ?? years.find((y) => y.is_current)?.id ?? "";
+      document.getElementById("f-grade").value = fee?.grade_level ?? "";
+      document.getElementById("f-amount").value = fee?.annual_amount ?? "";
+      document.getElementById("f-currency").value = fee?.currency ?? "IQD";
+      feeOverlay.classList.add("is-open");
+    }
+    feeForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("f-fee-id").value;
+      const payload = {
+        academic_year_id: document.getElementById("f-year").value,
+        grade_level: Number(document.getElementById("f-grade").value),
+        annual_amount: Number(document.getElementById("f-amount").value),
+        currency: document.getElementById("f-currency").value.trim() || "IQD",
+        school_id: profile.school_id,
+      };
+      const result = await guard(() => (id ? updateFee(id, payload) : createFee(payload)));
+      if (result) {
+        showToast("تم الحفظ", "success");
+        closeFeeModal();
+        await renderFeesTab();
+      }
+    });
+
+    // ---------- Payments tab ----------
+    let selectedStudent = null;
+    function renderPaymentsTab() {
+      const container = document.getElementById("tab-content");
+      container.innerHTML = `
+        <div class="field search-input" style="max-width:360px; margin-bottom:20px;">
+          <input type="text" id="student-search" placeholder="ابحث عن طالب بالاسم..." />
+          <div id="search-results"></div>
+        </div>
+        <div id="student-finance-wrap"></div>
+      `;
+      const searchInput = document.getElementById("student-search");
+      searchInput.addEventListener(
+        "input",
+        debounce(async () => {
+          const resultsEl = document.getElementById("search-results");
+          const q = searchInput.value.trim();
+          if (!q) {
+            resultsEl.innerHTML = "";
+            return;
+          }
+          const students = (await guard(() => listStudents({ search: q }))) ?? [];
+          resultsEl.innerHTML = students
+            .slice(0, 8)
+            .map(
+              (s) => `<div class="dropdown-item" data-student-id="${s.id}" style="cursor:pointer;">${escapeHtml(s.full_name)} — ${escapeHtml(s.sections?.classes?.name ?? "")} ${escapeHtml(s.sections?.name ?? "")}</div>`
+            )
+            .join("");
+          resultsEl.querySelectorAll("[data-student-id]").forEach((el) =>
+            el.addEventListener("click", () => {
+              selectedStudent = students.find((s) => s.id === el.dataset.studentId);
+              searchInput.value = selectedStudent.full_name;
+              resultsEl.innerHTML = "";
+              renderStudentFinance();
+            })
+          );
+        }, 300)
+      );
+    }
+
+    async function renderStudentFinance() {
+      const wrap = document.getElementById("student-finance-wrap");
+      if (!selectedStudent) {
+        wrap.innerHTML = "";
+        return;
+      }
+      const [balance, payments] = await Promise.all([
+        guard(() => getStudentBalance(selectedStudent.id)),
+        guard(() => listPayments(selectedStudent.id)),
+      ]);
+
+      wrap.innerHTML = `
+        <div class="grid grid-3" style="margin-bottom:20px;">
+          <div class="stat-card"><div><div class="stat-value">${balance ? Number(balance.annual_amount).toLocaleString("ar") : "—"}</div><div class="stat-label">القسط السنوي</div></div></div>
+          <div class="stat-card"><div><div class="stat-value">${balance ? Number(balance.total_paid).toLocaleString("ar") : "—"}</div><div class="stat-label">المدفوع</div></div></div>
+          <div class="stat-card"><div><div class="stat-value" style="color:${balance && balance.remaining > 0 ? "var(--danger)" : "var(--success)"};">${balance ? Number(balance.remaining).toLocaleString("ar") : "—"}</div><div class="stat-label">المتبقي (${balance?.currency ?? "IQD"})</div></div></div>
+        </div>
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-title">تسجيل دفعة جديدة</div>
+          <form id="payment-form">
+            <div class="grid grid-3">
+              <div class="field"><label for="p-amount">المبلغ</label><input type="number" id="p-amount" min="0.01" step="0.01" required /></div>
+              <div class="field"><label for="p-date">التاريخ</label><input type="date" id="p-date" required /></div>
+              <div class="field"><label for="p-method">طريقة الدفع</label>
+                <select id="p-method">
+                  <option value="cash">نقدي</option>
+                  <option value="bank_transfer">حوالة بنكية</option>
+                  <option value="card">بطاقة</option>
+                  <option value="other">أخرى</option>
+                </select>
+              </div>
+            </div>
+            <div class="field"><label for="p-note">ملاحظة (اختياري)</label><input id="p-note" /></div>
+            <button type="submit" class="btn btn-success">تسجيل الدفعة</button>
+          </form>
+        </div>
+        <div class="card">
+          <div class="card-title">سجل المدفوعات</div>
+          ${
+            !payments || payments.length === 0
+              ? `<p class="text-muted" style="font-size:13px;">لا توجد دفعات مسجّلة بعد</p>`
+              : `<div class="table-wrap" style="border:none;"><table class="table">
+                  <thead><tr><th>التاريخ</th><th>المبلغ</th><th>الطريقة</th><th>سجّلها</th></tr></thead>
+                  <tbody>
+                    ${payments
+                      .map(
+                        (p) => `<tr><td>${formatDate(p.paid_at)}</td><td>${Number(p.amount).toLocaleString("ar")}</td><td>${escapeHtml(methodLabel(p.method))}</td><td>${escapeHtml(p.recorded_by_profile?.full_name ?? "—")}</td></tr>`
+                      )
+                      .join("")}
+                  </tbody>
+                </table></div>`
+          }
+        </div>
+      `;
+
+      document.getElementById("p-date").value = new Date().toISOString().slice(0, 10);
+      document.getElementById("payment-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const result = await guard(() =>
+          createPayment({
+            student_id: selectedStudent.id,
+            amount: Number(document.getElementById("p-amount").value),
+            paid_at: document.getElementById("p-date").value,
+            method: document.getElementById("p-method").value,
+            note: document.getElementById("p-note").value.trim() || null,
+            school_id: profile.school_id,
+            recorded_by: profile.id,
+          })
+        );
+        if (result) {
+          showToast("تم تسجيل الدفعة", "success");
+          await renderStudentFinance();
+        }
+      });
+    }
+
+    function methodLabel(method) {
+      return { cash: "نقدي", bank_transfer: "حوالة بنكية", card: "بطاقة", other: "أخرى" }[method] ?? method;
+    }
+
+    function renderTab() {
+      selectedStudent = null;
+      if (activeTab === "fees") renderFeesTab();
+      else renderPaymentsTab();
+    }
+
+    renderTab();
+  </script>
+</body>
+</html>

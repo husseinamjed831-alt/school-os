@@ -16,6 +16,7 @@ const ICONS = {
   logout: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>`,
   telegram: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>`,
   staffAttendance: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 11 2 2 4-4"/></svg>`,
+  finance: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1 3 2.5-1.3 2-3 2-3 .7-3 2.2 1.3 2.3 3 2.3 3-.9 3-2.3"/></svg>`,
 };
 
 const NAV_BY_ROLE = {
@@ -28,6 +29,7 @@ const NAV_BY_ROLE = {
     { key: "setup", label: "الهيكل الأكاديمي", href: "/admin/setup.html", icon: "setup" },
     { key: "schedule", label: "الجدول الأسبوعي", href: "/admin/schedule.html", icon: "schedule" },
     { key: "staff-attendance", label: "حضور الموظفين", href: "/admin/staff-attendance.html", icon: "staffAttendance" },
+    { key: "finance", label: "المالية", href: "/admin/finance.html", icon: "finance" },
     { key: "grading", label: "إعدادات التقييم", href: "/admin/grading.html", icon: "grading" },
     { key: "users", label: "المستخدمون", href: "/admin/users.html", icon: "users" },
   ],
@@ -37,6 +39,7 @@ const NAV_BY_ROLE = {
     { key: "setup", label: "الهيكل الأكاديمي", href: "/admin/setup.html", icon: "setup" },
     { key: "schedule", label: "الجدول الأسبوعي", href: "/admin/schedule.html", icon: "schedule" },
     { key: "staff-attendance", label: "حضور الموظفين", href: "/admin/staff-attendance.html", icon: "staffAttendance" },
+    { key: "finance", label: "المالية", href: "/admin/finance.html", icon: "finance" },
     { key: "users", label: "المستخدمون", href: "/admin/users.html", icon: "users" },
   ],
   teacher: [

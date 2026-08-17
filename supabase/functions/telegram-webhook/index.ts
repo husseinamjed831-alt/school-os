@@ -115,7 +115,14 @@ async function handleMessage(admin: any, chatId: number, text: string, botToken:
     return;
   }
   if (text === "/المتبقي") {
-    await reply(botToken, chatId, "نظام المدفوعات غير مفعّل بعد بهذا الإصدار من النظام.");
+    // Financial info is parent/staff-facing only, matching the payments RLS
+    // policies — a linked student account does not see it, even their own.
+    if (profile.role !== "parent") {
+      await reply(botToken, chatId, "هذا الأمر متاح فقط لحسابات أولياء الأمور.");
+      return;
+    }
+    if (!student) return reply(botToken, chatId, studentOnlyMessage(profile.role));
+    await reply(botToken, chatId, await formatBalance(admin, student));
     return;
   }
 
@@ -186,6 +193,36 @@ async function formatSchedule(admin: any, student: any) {
   if (!data || data.length === 0) return `${student.full_name}: لا توجد حصص مجدولة اليوم.`;
   const lines = data.map((s: any) => `الحصة ${s.period}: ${s.subjects?.name ?? "—"}`);
   return `🗓️ جدول ${student.full_name} اليوم\n${lines.join("\n")}`;
+}
+
+async function formatBalance(admin: any, student: any) {
+  const { data: sectionRow } = await admin
+    .from("students")
+    .select("sections(classes(grade_level)), school_id")
+    .eq("id", student.id)
+    .single();
+  const gradeLevel = sectionRow?.sections?.classes?.grade_level;
+
+  let annualAmount = 0;
+  let currency = "IQD";
+  if (gradeLevel != null) {
+    const { data: fee } = await admin
+      .from("fees")
+      .select("annual_amount, currency, academic_years!inner(is_current)")
+      .eq("grade_level", gradeLevel)
+      .eq("academic_years.is_current", true)
+      .maybeSingle();
+    if (fee) {
+      annualAmount = fee.annual_amount;
+      currency = fee.currency;
+    }
+  }
+
+  const { data: payments } = await admin.from("payments").select("amount").eq("student_id", student.id);
+  const totalPaid = (payments ?? []).reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+  const remaining = annualAmount - totalPaid;
+
+  return `💰 الوضع المالي لـ ${student.full_name}\nالقسط السنوي: ${annualAmount.toLocaleString()} ${currency}\nالمدفوع: ${totalPaid.toLocaleString()} ${currency}\nالمتبقي: ${remaining.toLocaleString()} ${currency}`;
 }
 
 async function reply(botToken: string, chatId: number, text: string) {

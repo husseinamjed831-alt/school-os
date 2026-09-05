@@ -15,7 +15,7 @@
     import { supabase } from "/js/lib/supabase-client.js";
     import { getStudentAttendanceRate, getStudentGradeSummary } from "/js/api/analytics.js";
     import { getStudentBalance } from "/js/api/finance.js";
-    import { guard, escapeHtml } from "/js/lib/utils.js";
+    import { guard, escapeHtml, formatCurrency } from "/js/lib/utils.js";
 
     const profile = await requireRole(["parent"]);
     const content = mountShell(profile, "dashboard");
@@ -69,7 +69,7 @@
                 balance
                   ? `<div style="border-top:1px solid var(--border); padding-top:10px;">
                       <div class="text-muted" style="font-size:12px;">المتبقي من القسط</div>
-                      <div style="font-weight:800; font-size:16px; color:${balance.remaining > 0 ? "var(--danger)" : "var(--success)"};">${Number(balance.remaining).toLocaleString("ar")} ${escapeHtml(balance.currency)}</div>
+                      <div style="font-weight:800; font-size:16px; color:${balance.remaining > 0 ? "var(--danger)" : "var(--success)"};">${formatCurrency(balance.remaining, balance.currency)}</div>
                     </div>`
                   : ""
               }

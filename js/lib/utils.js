@@ -77,11 +77,65 @@ export function toArabicError(message) {
   return message;
 }
 
+/** @param {number} amount @param {string} [currency] */
+export function formatCurrency(amount, currency = "IQD") {
+  const n = Number(amount ?? 0);
+  return `${n.toLocaleString("ar")} ${currency}`;
+}
+
 /** Escapes text before inserting into innerHTML to prevent XSS. */
 export function escapeHtml(value) {
   const div = document.createElement("div");
   div.textContent = value ?? "";
   return div.innerHTML;
+}
+
+/**
+ * Minimal RFC-4180-ish CSV parser: handles quoted fields (with embedded
+ * commas/newlines/escaped "" quotes) and bare unquoted fields. Returns an
+ * array of row-arrays, no header handling — the caller matches headers.
+ * @param {string} text
+ * @returns {string[][]}
+ */
+export function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  const normalized = text.replace(/\r\n/g, "\n");
+
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (normalized[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ",") {
+      row.push(field);
+      field = "";
+    } else if (char === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += char;
+    }
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((cell) => cell.trim() !== ""));
 }
 
 export function debounce(fn, wait = 300) {

@@ -27,6 +27,15 @@ export async function login(email, password) {
     await supabase.auth.signOut();
     throw new Error("هذا الحساب معطل، تواصل مع الإدارة");
   }
+  // super_admin has no school_id — only school-scoped roles can be blocked
+  // by their school's own suspension.
+  if (profile.school_id) {
+    const { data: school } = await supabase.from("schools").select("is_active").eq("id", profile.school_id).maybeSingle();
+    if (school && !school.is_active) {
+      await supabase.auth.signOut();
+      throw new Error("حساب المدرسة معلّق حالياً، تواصل مع إدارة المنصة");
+    }
+  }
   return { profile, session: data.session };
 }
 

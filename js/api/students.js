@@ -69,6 +69,30 @@ export async function getMyStudentRecord() {
   }
 }
 
+/**
+ * Bulk-inserts pre-validated student rows in safe chunks (a chunk failing
+ * doesn't lose earlier successfully-committed chunks, since each is its own
+ * request) — used by the CSV import flow. Returns how many actually saved.
+ * @param {{full_name: string, birth_date?: string|null, section_id?: string|null, school_id: string, branch_id: string}[]} rows
+ */
+export async function bulkCreateStudents(rows) {
+  const CHUNK_SIZE = 50;
+  let inserted = 0;
+  try {
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + CHUNK_SIZE);
+      const { error } = await supabase.from("students").insert(chunk);
+      if (error) throw error;
+      inserted += chunk.length;
+    }
+    return { inserted, total: rows.length };
+  } catch (err) {
+    // Whatever committed before the failing chunk stays committed (each
+    // chunk is its own transaction) — surface how far it got.
+    throw Object.assign(new Error(toArabicError(err.message)), { inserted });
+  }
+}
+
 /** Soft delete: is_active=false. */
 export async function deactivateStudent(id) {
   try {

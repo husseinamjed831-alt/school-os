@@ -28,7 +28,9 @@ const NAV_BY_ROLE = {
     { key: "students", label: "الطلاب", href: "/admin/students.html", icon: "students" },
     { key: "setup", label: "الهيكل الأكاديمي", href: "/admin/setup.html", icon: "setup" },
     { key: "schedule", label: "الجدول الأسبوعي", href: "/admin/schedule.html", icon: "schedule" },
+    { key: "attendance", label: "الحضور", href: "/admin/attendance.html", icon: "students" },
     { key: "staff-attendance", label: "حضور الموظفين", href: "/admin/staff-attendance.html", icon: "staffAttendance" },
+    { key: "reports", label: "التقارير", href: "/admin/reports.html", icon: "grading" },
     { key: "finance", label: "المالية", href: "/admin/finance.html", icon: "finance" },
     { key: "grading", label: "إعدادات التقييم", href: "/admin/grading.html", icon: "grading" },
     { key: "users", label: "المستخدمون", href: "/admin/users.html", icon: "users" },
@@ -38,7 +40,9 @@ const NAV_BY_ROLE = {
     { key: "students", label: "الطلاب", href: "/admin/students.html", icon: "students" },
     { key: "setup", label: "الهيكل الأكاديمي", href: "/admin/setup.html", icon: "setup" },
     { key: "schedule", label: "الجدول الأسبوعي", href: "/admin/schedule.html", icon: "schedule" },
+    { key: "attendance", label: "الحضور", href: "/admin/attendance.html", icon: "students" },
     { key: "staff-attendance", label: "حضور الموظفين", href: "/admin/staff-attendance.html", icon: "staffAttendance" },
+    { key: "reports", label: "التقارير", href: "/admin/reports.html", icon: "grading" },
     { key: "finance", label: "المالية", href: "/admin/finance.html", icon: "finance" },
     { key: "users", label: "المستخدمون", href: "/admin/users.html", icon: "users" },
   ],
@@ -101,11 +105,24 @@ export function mountShell(profile, activeKey) {
       </aside>
       <div class="app-main">
         <header class="topbar">
-          <div class="flex gap-12">
-            <div class="avatar">${escapeHtml(initials(profile.full_name))}</div>
-            <div>
-              <div style="font-weight:700; font-size:14px;">${escapeHtml(profile.full_name)}</div>
-              <div class="text-subtle" style="font-size:12px;">${ROLE_LABEL[profile.role] ?? ""}</div>
+          <div class="dropdown" id="user-dropdown">
+            <button
+              type="button"
+              id="user-menu-toggle"
+              aria-haspopup="true"
+              aria-expanded="false"
+              style="display:flex; align-items:center; gap:12px; background:none; border:none; cursor:pointer; padding:6px; border-radius:var(--radius-sm); font:inherit; color:inherit; text-align:right;"
+            >
+              <div class="avatar">${escapeHtml(initials(profile.full_name))}</div>
+              <div>
+                <div style="font-weight:700; font-size:14px;">${escapeHtml(profile.full_name)}</div>
+                <div class="text-subtle" style="font-size:12px;">${ROLE_LABEL[profile.role] ?? ""}</div>
+              </div>
+            </button>
+            <div class="dropdown-panel" id="user-menu-panel" style="left:0; width:200px;">
+              <div class="dropdown-item" id="user-menu-logout" style="cursor:pointer; display:flex; align-items:center; gap:10px;">
+                ${ICONS.logout}<span>تسجيل الخروج</span>
+              </div>
             </div>
           </div>
           <div class="topbar-actions">
@@ -150,10 +167,33 @@ export function mountShell(profile, activeKey) {
   );
 
   document.getElementById("shell-logout").addEventListener("click", logout);
+  wireUserMenu();
   wireNotifications(profile);
   wireTelegramLink();
 
   return document.getElementById("app-content");
+}
+
+// Closed by default; opens only on clicking the account button, closes on
+// a second click, a click outside the panel, or navigating to another page
+// (this is a classic multi-page app — every nav link does a full page
+// load, which naturally unmounts the shell and re-renders it closed).
+function wireUserMenu() {
+  const dropdown = document.getElementById("user-dropdown");
+  const toggle = document.getElementById("user-menu-toggle");
+
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = dropdown.classList.toggle("is-open");
+    toggle.setAttribute("aria-expanded", String(isOpen));
+  });
+  document.addEventListener("click", (e) => {
+    if (!dropdown.contains(e.target)) {
+      dropdown.classList.remove("is-open");
+      toggle.setAttribute("aria-expanded", "false");
+    }
+  });
+  document.getElementById("user-menu-logout").addEventListener("click", logout);
 }
 
 function wireTelegramLink() {

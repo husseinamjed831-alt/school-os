@@ -16,6 +16,21 @@ export async function listTeachers() {
   }
 }
 
+/** @param {string} profileId */
+export async function getTeacherByProfileId(profileId) {
+  try {
+    const { data, error } = await supabase
+      .from("teachers")
+      .select("id, profile_id, specialty, profiles(full_name, phone, is_active, hamura_id, activation_status)")
+      .eq("profile_id", profileId)
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    throw new Error(toArabicError(err.message));
+  }
+}
+
 export async function updateTeacherSpecialty(id, specialty) {
   try {
     const { data, error } = await supabase.from("teachers").update({ specialty }).eq("id", id).select().single();

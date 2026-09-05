@@ -35,7 +35,7 @@
     import { listAcademicYears } from "/js/api/academic-years.js";
     import { listFees, createFee, updateFee, deleteFee, listPayments, createPayment, getStudentBalance } from "/js/api/finance.js";
     import { listStudents } from "/js/api/students.js";
-    import { guard, showToast, escapeHtml, formatDate, debounce } from "/js/lib/utils.js";
+    import { guard, showToast, escapeHtml, formatDate, formatCurrency, debounce } from "/js/lib/utils.js";
 
     const profile = await requireRole(["school_admin", "branch_admin"]);
     const content = mountShell(profile, "finance");
@@ -97,7 +97,7 @@
                 <tr>
                   <td>${f.grade_level}</td>
                   <td>${escapeHtml(f.academic_years?.label ?? "—")}${f.academic_years?.is_current ? ` <span class="badge badge-primary">الحالية</span>` : ""}</td>
-                  <td>${Number(f.annual_amount).toLocaleString("ar")} ${escapeHtml(f.currency)}</td>
+                  <td>${formatCurrency(f.annual_amount, f.currency)}</td>
                   <td class="flex gap-8">
                     <button class="btn btn-ghost btn-sm" data-edit="${f.id}">تعديل</button>
                     <button class="btn btn-danger btn-sm" data-delete="${f.id}">حذف</button>
@@ -212,9 +212,9 @@
 
       wrap.innerHTML = `
         <div class="grid grid-3" style="margin-bottom:20px;">
-          <div class="stat-card"><div><div class="stat-value">${balance ? Number(balance.annual_amount).toLocaleString("ar") : "—"}</div><div class="stat-label">القسط السنوي</div></div></div>
-          <div class="stat-card"><div><div class="stat-value">${balance ? Number(balance.total_paid).toLocaleString("ar") : "—"}</div><div class="stat-label">المدفوع</div></div></div>
-          <div class="stat-card"><div><div class="stat-value" style="color:${balance && balance.remaining > 0 ? "var(--danger)" : "var(--success)"};">${balance ? Number(balance.remaining).toLocaleString("ar") : "—"}</div><div class="stat-label">المتبقي (${balance?.currency ?? "IQD"})</div></div></div>
+          <div class="stat-card"><div><div class="stat-value">${balance ? formatCurrency(balance.annual_amount, balance.currency) : "غير متوفر"}</div><div class="stat-label">القسط السنوي</div></div></div>
+          <div class="stat-card"><div><div class="stat-value">${balance ? formatCurrency(balance.total_paid, balance.currency) : "غير متوفر"}</div><div class="stat-label">المدفوع</div></div></div>
+          <div class="stat-card"><div><div class="stat-value" style="color:${balance && balance.remaining > 0 ? "var(--danger)" : "var(--success)"};">${balance ? formatCurrency(balance.remaining, balance.currency) : "غير متوفر"}</div><div class="stat-label">المتبقي</div></div></div>
         </div>
         <div class="card" style="margin-bottom:20px;">
           <div class="card-title">تسجيل دفعة جديدة</div>
@@ -245,7 +245,7 @@
                   <tbody>
                     ${payments
                       .map(
-                        (p) => `<tr><td>${formatDate(p.paid_at)}</td><td>${Number(p.amount).toLocaleString("ar")}</td><td>${escapeHtml(methodLabel(p.method))}</td><td>${escapeHtml(p.recorded_by_profile?.full_name ?? "—")}</td></tr>`
+                        (p) => `<tr><td>${formatDate(p.paid_at)}</td><td>${formatCurrency(p.amount)}</td><td>${escapeHtml(methodLabel(p.method))}</td><td>${escapeHtml(p.recorded_by_profile?.full_name ?? "غير متوفر")}</td></tr>`
                       )
                       .join("")}
                   </tbody>
@@ -257,6 +257,9 @@
       document.getElementById("p-date").value = new Date().toISOString().slice(0, 10);
       document.getElementById("payment-form").addEventListener("submit", async (e) => {
         e.preventDefault();
+        const submitBtn = e.target.querySelector("button[type=submit]");
+        submitBtn.disabled = true;
+        submitBtn.textContent = "جارِ التسجيل...";
         const result = await guard(() =>
           createPayment({
             student_id: selectedStudent.id,
@@ -268,6 +271,8 @@
             recorded_by: profile.id,
           })
         );
+        submitBtn.disabled = false;
+        submitBtn.textContent = "تسجيل الدفعة";
         if (result) {
           showToast("تم تسجيل الدفعة", "success");
           await renderStudentFinance();

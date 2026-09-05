@@ -56,12 +56,15 @@
   <script type="module">
     import { requireRole } from "/js/lib/auth.js";
     import { mountShell } from "/js/lib/shell.js";
-    import { listSchools, createSchool, updateSchool, deactivateSchool } from "/js/api/schools.js";
+    import { listSchools, createSchool, updateSchool, deactivateSchool, activateSchool } from "/js/api/schools.js";
     import { createUserAccount } from "/js/api/users.js";
     import { guard, showToast, escapeHtml, formatDate } from "/js/lib/utils.js";
 
     const profile = await requireRole(["super_admin"]);
     const content = mountShell(profile, "schools");
+
+    const SUBSCRIPTION_LABEL = { trial: "تجريبي", active: "نشط", suspended: "معلّق" };
+    const SUBSCRIPTION_BADGE = { trial: "badge-warning", active: "badge-success", suspended: "badge-danger" };
 
     content.innerHTML = `
       <div class="flex-between" style="margin-bottom:20px;">
@@ -157,7 +160,7 @@
       wrap.innerHTML = `
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>الاسم</th><th>المعرف</th><th>الحالة</th><th>تاريخ الإنشاء</th><th></th></tr></thead>
+            <thead><tr><th>الاسم</th><th>المعرف</th><th>الحالة</th><th>الاشتراك</th><th>تاريخ الإنشاء</th><th></th></tr></thead>
             <tbody>
               ${schools
                 .map(
@@ -166,11 +169,12 @@
                   <td>${escapeHtml(s.name)}</td>
                   <td>${escapeHtml(s.slug)}</td>
                   <td><span class="badge ${s.is_active ? "badge-success" : "badge-neutral"}">${s.is_active ? "نشطة" : "معطلة"}</span></td>
+                  <td><span class="badge ${SUBSCRIPTION_BADGE[s.subscription_status] ?? "badge-neutral"}">${SUBSCRIPTION_LABEL[s.subscription_status] ?? s.subscription_status ?? "—"}</span></td>
                   <td>${formatDate(s.created_at)}</td>
                   <td class="flex gap-8">
                     <button class="btn btn-ghost btn-sm" data-edit="${s.id}">تعديل</button>
                     <button class="btn btn-ghost btn-sm" data-add-admin="${s.id}">إنشاء مدير</button>
-                    ${s.is_active ? `<button class="btn btn-danger btn-sm" data-deactivate="${s.id}">تعطيل</button>` : ""}
+                    ${s.is_active ? `<button class="btn btn-danger btn-sm" data-deactivate="${s.id}">تعطيل</button>` : `<button class="btn btn-primary btn-sm" data-activate="${s.id}">تفعيل</button>`}
                   </td>
                 </tr>`
                 )
@@ -198,6 +202,16 @@
       );
       wrap.querySelectorAll("[data-add-admin]").forEach((btn) =>
         btn.addEventListener("click", () => openAdminModal(btn.dataset.addAdmin))
+      );
+      wrap.querySelectorAll("[data-activate]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!confirm("هل تريد إعادة تفعيل هذه المدرسة؟")) return;
+          const result = await guard(() => activateSchool(btn.dataset.activate));
+          if (result) {
+            showToast("تم تفعيل المدرسة", "success");
+            await renderTable();
+          }
+        })
       );
     }
 

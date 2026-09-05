@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ملف المعلم — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { getTeacherByProfileId, updateTeacherSpecialty } from "/js/api/teachers.js";
+    import { deactivateUser, reissueActivationCode } from "/js/api/users.js";
+    import { guard, showToast, escapeHtml } from "/js/lib/utils.js";
+    import { showActivationCodeModal } from "/js/lib/activation-modal.js";
+
+    const profile = await requireRole(["school_admin", "branch_admin"]);
+    const content = mountShell(profile, "users");
+
+    const teacherProfileId = new URLSearchParams(window.location.search).get("id");
+    if (!teacherProfileId) {
+      content.innerHTML = `<div class="empty-state"><div class="empty-state-title">لم يتم تحديد معلم</div></div>`;
+    } else {
+      await render();
+    }
+
+    async function render() {
+      const teacher = await guard(() => getTeacherByProfileId(teacherProfileId));
+      if (!teacher) {
+        content.innerHTML = `<div class="empty-state"><div class="empty-state-title">تعذر العثور على هذا المعلم</div></div>`;
+        return;
+      }
+      const p = teacher.profiles;
+      const isPending = p.activation_status === "pending";
+
+      content.innerHTML = `
+        <a href="/admin/users.html" class="text-muted" style="display:inline-block; margin-bottom:16px;">← رجوع للمستخدمين</a>
+
+        <div class="flex-between" style="margin-bottom:20px; align-items:flex-start;">
+          <div>
+            <h1>${escapeHtml(p.full_name)}</h1>
+            <p class="text-muted">${escapeHtml(p.phone ?? "بدون رقم هاتف")}</p>
+          </div>
+          <span class="badge ${p.is_active ? "badge-success" : "badge-neutral"}">${p.is_active ? "نشط" : "معطل"}</span>
+        </div>
+
+        <div class="grid grid-2" style="align-items:start;">
+          <div class="card">
+            <div class="card-title">إدارة الحساب</div>
+
+            <div class="field">
+              <label>HAMURA ID</label>
+              <div class="flex gap-8">
+                <input type="text" id="profile-hamura-id" readonly value="${escapeHtml(p.hamura_id)}" style="font-weight:800; letter-spacing:1px;" />
+                <button type="button" class="btn btn-ghost btn-sm" id="copy-hamura-id">نسخ</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>حالة تفعيل الدخول</label>
+              <div>
+                <span class="badge ${isPending ? "badge-warning" : "badge-success"}">
+                  ${isPending ? "بانتظار التفعيل" : "الحساب مفعّل"}
+                </span>
+              </div>
+            </div>
+
+            ${
+              isPending
+                ? `
+              <p class="text-muted" style="font-size:13px; margin-bottom:12px;">
+                هذا المعلم لم يسجّل الدخول بعد ولم يحدد كلمة مرور. أصدر كوداً وسلّمه له مباشرة —
+                يدخل على صفحة التفعيل بـHAMURA ID أعلاه + الكود ليحدد كلمة مروره بنفسه.
+              </p>
+              <button type="button" class="btn btn-primary btn-sm" id="issue-code-btn">إصدار / إعادة إصدار كود التفعيل</button>
+              `
+                : `<p class="text-muted" style="font-size:13px;">هذا المعلم فعّل حسابه وحدد كلمة مروره بنفسه.</p>`
+            }
+
+            <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+              ${p.is_active ? `<button class="btn btn-danger btn-sm" id="deactivate-btn">تعطيل الحساب</button>` : `<span class="text-muted" style="font-size:13px;">الحساب معطّل حالياً — تواصل مع مدير المنصة لإعادة تفعيله.</span>`}
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">التخصص</div>
+            <form id="specialty-form">
+              <div class="field">
+                <label for="specialty-input">التخصص</label>
+                <input id="specialty-input" value="${escapeHtml(teacher.specialty ?? "")}" placeholder="مثال: رياضيات" />
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm">حفظ</button>
+            </form>
+          </div>
+        </div>
+      `;
+
+      document.getElementById("copy-hamura-id").addEventListener("click", async (e) => {
+        const input = document.getElementById("profile-hamura-id");
+        try {
+          await navigator.clipboard.writeText(input.value);
+        } catch {
+          input.select();
+          document.execCommand("copy");
+        }
+        const btn = e.currentTarget;
+        const original = btn.textContent;
+        btn.textContent = "تم النسخ ✓";
+        setTimeout(() => (btn.textContent = original), 1500);
+      });
+
+      document.getElementById("issue-code-btn")?.addEventListener("click", async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = "جارِ الإصدار...";
+        const result = await guard(() => reissueActivationCode(teacherProfileId));
+        btn.disabled = false;
+        btn.textContent = "إصدار / إعادة إصدار كود التفعيل";
+        if (result) showActivationCodeModal(result);
+      });
+
+      document.getElementById("deactivate-btn")?.addEventListener("click", async () => {
+        if (!confirm("هل تريد تعطيل حساب هذا المعلم؟")) return;
+        const result = await guard(() => deactivateUser(teacherProfileId));
+        if (result) {
+          showToast("تم تعطيل الحساب", "success");
+          await render();
+        }
+      });
+
+      document.getElementById("specialty-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const value = document.getElementById("specialty-input").value.trim();
+        const result = await guard(() => updateTeacherSpecialty(teacher.id, value || null));
+        if (result) showToast("تم الحفظ", "success");
+      });
+    }
+  </script>
+</body>
+</html>

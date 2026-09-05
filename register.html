@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تسجيل مدرسة جديدة — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">S</div>
+      <h1 class="auth-title">سجّل مدرستك</h1>
+      <p class="auth-subtitle">أنشئ حساب مدير المدرسة وابدأ فترة تجريبية</p>
+
+      <div class="auth-error" id="register-error"></div>
+
+      <form id="register-form">
+        <div class="field">
+          <label for="school-name">اسم المدرسة</label>
+          <input type="text" id="school-name" required />
+        </div>
+        <div class="field">
+          <label for="owner-name">اسمك الكامل (مدير المدرسة)</label>
+          <input type="text" id="owner-name" required />
+        </div>
+        <div class="field">
+          <label for="owner-phone">رقم الهاتف (اختياري)</label>
+          <input type="text" id="owner-phone" />
+        </div>
+        <div class="field">
+          <label for="owner-email">البريد الإلكتروني</label>
+          <input type="email" id="owner-email" required autocomplete="email" />
+        </div>
+        <div class="field">
+          <label for="owner-password">كلمة المرور</label>
+          <input type="password" id="owner-password" required minlength="8" autocomplete="new-password" />
+        </div>
+        <button type="submit" class="btn btn-primary" id="register-submit" style="width:100%;">إنشاء المدرسة</button>
+      </form>
+
+      <p class="text-muted" style="text-align:center; font-size:13px; margin-top:18px;">
+        لديك حساب بالفعل؟ <a href="/index.html">تسجيل الدخول</a>
+      </p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from "/js/lib/supabase-client.js";
+    import { login, homeForRole } from "/js/lib/auth.js";
+    import { toArabicError } from "/js/lib/utils.js";
+
+    const form = document.getElementById("register-form");
+    const errorBox = document.getElementById("register-error");
+    const submitBtn = document.getElementById("register-submit");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorBox.classList.remove("is-visible");
+      submitBtn.disabled = true;
+      submitBtn.textContent = "جارِ الإنشاء...";
+
+      const email = document.getElementById("owner-email").value.trim();
+      const password = document.getElementById("owner-password").value;
+
+      try {
+        const { data, error } = await supabase.functions.invoke("register-school", {
+          body: {
+            school_name: document.getElementById("school-name").value.trim(),
+            owner_full_name: document.getElementById("owner-name").value.trim(),
+            owner_phone: document.getElementById("owner-phone").value.trim() || undefined,
+            owner_email: email,
+            owner_password: password,
+          },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+
+        const { profile } = await login(email, password);
+        window.location.href = homeForRole(profile.role);
+      } catch (err) {
+        errorBox.textContent = toArabicError(err.message || "تعذر إنشاء المدرسة");
+        errorBox.classList.add("is-visible");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "إنشاء المدرسة";
+      }
+    });
+  </script>
+</body>
+</html>

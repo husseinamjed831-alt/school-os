@@ -133,6 +133,7 @@ async function main() {
     "004_teacher_scoping.sql": ["staff_attendance"],
     "005_assessments.sql": ["assessment_types", "grading_scales", "assessments", "assessment_scores"],
     "006_student_records.sql": ["behavior_records", "teacher_notes"],
+    "010_account_activation.sql": ["account_activations"],
   };
 
   let anonRowLeak = false;
@@ -192,18 +193,21 @@ async function main() {
   }
 
   // ---------- Step 7: Edge Function deployment ----------
-  const edgeCheck = await safeFetch(`${BASE}/functions/v1/create-user`, {
-    method: "OPTIONS",
-    headers: authHeaders,
-  });
-  if (!edgeCheck.ok) {
-    record("FAIL", "Edge Function create-user", `Network error — ${edgeCheck.error}`);
-  } else if (edgeCheck.status === 200) {
-    record("PASS", "Edge Function create-user is deployed", "OPTIONS preflight answered 200 (CORS handled)");
-  } else if (edgeCheck.status === 404) {
-    record("FAIL", "Edge Function create-user is NOT deployed", "Run: supabase functions deploy create-user");
-  } else {
-    record("WARN", "Edge Function create-user — unexpected response", `HTTP ${edgeCheck.status} — it may be deployed but misbehaving; try the manual test in README.md`);
+  const EDGE_FUNCTIONS = ["create-user", "reissue-activation-code", "activate-account", "register-school"];
+  for (const fnName of EDGE_FUNCTIONS) {
+    const edgeCheck = await safeFetch(`${BASE}/functions/v1/${fnName}`, {
+      method: "OPTIONS",
+      headers: authHeaders,
+    });
+    if (!edgeCheck.ok) {
+      record("FAIL", `Edge Function ${fnName}`, `Network error — ${edgeCheck.error}`);
+    } else if (edgeCheck.status === 200) {
+      record("PASS", `Edge Function ${fnName} is deployed`, "OPTIONS preflight answered 200 (CORS handled)");
+    } else if (edgeCheck.status === 404) {
+      record("FAIL", `Edge Function ${fnName} is NOT deployed`, `Run: supabase functions deploy ${fnName}`);
+    } else {
+      record("WARN", `Edge Function ${fnName} — unexpected response`, `HTTP ${edgeCheck.status} — it may be deployed but misbehaving; try the manual test in README.md`);
+    }
   }
 
   printResults();

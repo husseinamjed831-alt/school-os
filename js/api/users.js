@@ -18,10 +18,23 @@ export async function listUsers(filters = {}) {
   }
 }
 
+/** @param {string} id */
+export async function getUserProfile(id) {
+  try {
+    const { data, error } = await supabase.from("profiles").select("*").eq("id", id).single();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    throw new Error(toArabicError(err.message));
+  }
+}
+
 /**
  * Creates a login account (teacher / branch_admin / parent / student) via
- * the create-user Edge Function.
- * @param {{email: string, password: string, full_name: string, role: string, branch_id?: string, phone?: string}} data
+ * the create-user Edge Function. Teachers don't take a `password` — the
+ * function issues a HAMURA ID + one-time activation code instead (see
+ * `hamura_id`/`activation_code` on the returned object).
+ * @param {{email: string, password?: string, full_name: string, role: string, branch_id?: string, phone?: string}} data
  */
 export async function createUserAccount(data) {
   try {
@@ -46,6 +59,30 @@ export async function deactivateUser(id) {
     const { error } = await supabase.from("profiles").update({ is_active: false }).eq("id", id);
     if (error) throw error;
     return true;
+  } catch (err) {
+    throw new Error(toArabicError(err.message));
+  }
+}
+
+/**
+ * Issues a fresh activation code for a teacher whose account is still
+ * pending (lost/expired code, or too many failed attempts). Only works
+ * while the account hasn't been activated yet.
+ * @param {string} profileId
+ */
+export async function reissueActivationCode(profileId) {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    if (!token) throw new Error("انتهت الجلسة، سجل الدخول مجدداً");
+
+    const { data: fnData, error } = await supabase.functions.invoke("reissue-activation-code", {
+      body: { profile_id: profileId },
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (error) throw error;
+    if (fnData?.error) throw new Error(fnData.error);
+    return fnData;
   } catch (err) {
     throw new Error(toArabicError(err.message));
   }

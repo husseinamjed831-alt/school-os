@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>التقارير — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { listStudents } from "/js/api/students.js";
+    import { listUsers } from "/js/api/users.js";
+    import { listBranches } from "/js/api/branches.js";
+    import { listSections } from "/js/api/sections.js";
+    import { listClasses } from "/js/api/classes.js";
+    import { listSubjects } from "/js/api/subjects.js";
+    import { listPayments, listFees } from "/js/api/finance.js";
+    import { getSectionGradeSummary } from "/js/api/analytics.js";
+    import { guard, escapeHtml } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["school_admin", "branch_admin"]);
+    const content = mountShell(profile, "reports");
+
+    content.innerHTML = `
+      <h1>التقارير</h1>
+      <p class="text-muted" style="margin-bottom:20px;">ملخص المدرسة وتقرير درجات الشعب</p>
+
+      <div class="card" style="margin-bottom:24px;">
+        <div class="card-title">ملخص المدرسة</div>
+        <div class="grid grid-4" id="summary-stats" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">تقرير درجات شعبة</div>
+        <p class="text-muted" style="font-size:13px; margin-bottom:14px;">اختر شعبة ومادة لعرض النسبة الموزونة لكل طالب</p>
+        <div class="grid grid-3" style="margin-bottom:16px;">
+          <div class="field" style="margin-bottom:0;">
+            <label for="class-select">الصف</label>
+            <select id="class-select"><option value="">اختر صف...</option></select>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label for="section-select">الشعبة</label>
+            <select id="section-select"><option value="">اختر شعبة...</option></select>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label for="subject-select">المادة</label>
+            <select id="subject-select"><option value="">اختر مادة...</option></select>
+          </div>
+        </div>
+        <div id="grade-report-wrap"></div>
+      </div>
+    `;
+
+    // ---------- School summary ----------
+    const [students, teachers, branches, sections, payments] = await Promise.all([
+      guard(() => listStudents()),
+      guard(() => listUsers({ role: "teacher" })),
+      guard(() => listBranches()),
+      guard(() => listSections()),
+      guard(() => listFees()),
+    ]);
+    document.getElementById("summary-stats").innerHTML = `
+      <div class="stat-card"><div><div class="stat-value">${students?.length ?? 0}</div><div class="stat-label">الطلاب النشطون</div></div></div>
+      <div class="stat-card"><div><div class="stat-value">${teachers?.length ?? 0}</div><div class="stat-label">المعلمون</div></div></div>
+      <div class="stat-card"><div><div class="stat-value">${branches?.length ?? 0}</div><div class="stat-label">الفروع</div></div></div>
+      <div class="stat-card"><div><div class="stat-value">${sections?.length ?? 0}</div><div class="stat-label">الشعب</div></div></div>
+    `;
+
+    // ---------- Section grade report ----------
+    const classSelect = document.getElementById("class-select");
+    const sectionSelect = document.getElementById("section-select");
+    const subjectSelect = document.getElementById("subject-select");
+    const reportWrap = document.getElementById("grade-report-wrap");
+
+    const allClasses = (await guard(() => listClasses())) ?? [];
+    classSelect.insertAdjacentHTML("beforeend", allClasses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join(""));
+
+    const allSections = (await guard(() => listSections())) ?? [];
+    const allSubjects = (await guard(() => listSubjects())) ?? [];
+
+    function syncOptionsToClass() {
+      const classId = classSelect.value;
+      const sections = classId ? allSections.filter((s) => s.class_id === classId) : [];
+      const subjects = classId ? allSubjects.filter((s) => s.class_id === classId) : [];
+      sectionSelect.innerHTML = `<option value="">اختر شعبة...</option>` + sections.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+      subjectSelect.innerHTML = `<option value="">اختر مادة...</option>` + subjects.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+      reportWrap.innerHTML = "";
+    }
+    classSelect.addEventListener("change", syncOptionsToClass);
+
+    async function renderGradeReport() {
+      const sectionId = sectionSelect.value;
+      const subjectId = subjectSelect.value;
+      if (!sectionId || !subjectId) {
+        reportWrap.innerHTML = "";
+        return;
+      }
+      reportWrap.innerHTML = `<p class="text-muted">جارِ التحميل...</p>`;
+      const rows = (await guard(() => getSectionGradeSummary(sectionId, subjectId))) ?? [];
+      if (rows.length === 0) {
+        reportWrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">لا توجد بيانات</div><p>لا يوجد طلاب أو تقييمات مسجّلة بعد لهذه الشعبة/المادة</p></div>`;
+        return;
+      }
+      reportWrap.innerHTML = `
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>الطالب</th><th>النسبة الموزونة</th></tr></thead>
+            <tbody>
+              ${rows
+                .map(
+                  (r) => `
+                <tr>
+                  <td>${escapeHtml(r.student_name)}</td>
+                  <td>${r.weighted_percent !== null ? r.weighted_percent + "%" : "غير متوفر"}</td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+    sectionSelect.addEventListener("change", renderGradeReport);
+    subjectSelect.addEventListener("change", renderGradeReport);
+  </script>
+</body>
+</html>

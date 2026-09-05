@@ -150,6 +150,30 @@ export async function renderStudentProfile(container, studentId, options = {}) {
       </div>
     </div>
 
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">سجل التقييمات</div>
+      ${
+        !scores || scores.length === 0
+          ? `<p class="text-muted" style="font-size:13px;">لا توجد تقييمات مسجّلة بعد</p>`
+          : `<div class="table-wrap" style="border:none;"><table class="table">
+              <thead><tr><th>المادة</th><th>التقييم</th><th>التاريخ</th><th>الدرجة</th></tr></thead>
+              <tbody>
+                ${scores
+                  .map(
+                    (s) => `
+                  <tr>
+                    <td>${escapeHtml(s.assessments?.subjects?.name ?? "—")}</td>
+                    <td>${escapeHtml(s.assessments?.assessment_types?.name ?? "")} — ${escapeHtml(s.assessments?.title ?? "")}</td>
+                    <td>${formatDate(s.assessments?.assessment_date)}</td>
+                    <td>${s.is_missing ? `<span class="badge badge-warning">لم يُسلَّم</span>` : s.score != null ? `${s.score} / ${s.assessments?.max_score ?? 100}` : "لم يُصحَّح بعد"}</td>
+                  </tr>`
+                  )
+                  .join("")}
+              </tbody>
+            </table></div>`
+      }
+    </div>
+
     ${
       includeBehavior
         ? `<div class="card" style="margin-bottom:20px;">

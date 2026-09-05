@@ -51,6 +51,8 @@ successfully before starting the next:
 5. `sql/005_assessments.sql`
 6. `sql/006_student_records.sql`
 7. `sql/007_analytics_functions.sql`
+8. `sql/010_account_activation.sql`
+9. `sql/011_v1_hardening.sql`
 
 For each: open the file, copy its full contents, paste into a new SQL
 Editor query, click **Run**, confirm it says success with no red error
@@ -63,7 +65,7 @@ it's an obvious typo) or bring the exact error text back for a proper
 additive fix migration. Blindly re-running a partially-applied file will
 usually just fail again on "already exists" for whatever did succeed.
 
-### 6. Deploy the `create-user` Edge Function
+### 6. Deploy the Edge Functions
 
 This needs the Supabase CLI and Deno, which are **not installed by
 default** — install them first if you haven't:
@@ -76,7 +78,16 @@ Then, from the project root:
 supabase login
 supabase link --project-ref <your-project-ref>
 supabase functions deploy create-user
+supabase functions deploy reissue-activation-code
+supabase functions deploy activate-account --no-verify-jwt
+supabase functions deploy register-school --no-verify-jwt
 ```
+
+`activate-account` is the one function that must be reachable with **no**
+caller session — a teacher activating their account for the first time
+has never logged in — hence `--no-verify-jwt` on that one only. The other
+two stay behind normal JWT verification (they check the caller's own
+`profiles` role internally, same as `create-user` always has).
 
 The project ref is the `xxxxxxxxxxxx` part of your Project URL. You do
 **not** set `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` yourself —

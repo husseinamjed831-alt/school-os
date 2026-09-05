@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>استيراد الطلاب — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <script type="module">
+    import { requireRole } from "/js/lib/auth.js";
+    import { mountShell } from "/js/lib/shell.js";
+    import { listClasses } from "/js/api/classes.js";
+    import { listSections } from "/js/api/sections.js";
+    import { listStudents, bulkCreateStudents } from "/js/api/students.js";
+    import { guard, showToast, escapeHtml, parseCsv } from "/js/lib/utils.js";
+
+    const profile = await requireRole(["school_admin", "branch_admin"]);
+    const content = mountShell(profile, "students");
+
+    // Recognized headers (case-insensitive, Arabic or English) -> field name.
+    const HEADER_MAP = {
+      full_name: "full_name", "الاسم": "full_name", "اسم الطالب": "full_name", name: "full_name",
+      birth_date: "birth_date", "تاريخ الميلاد": "birth_date",
+      class_name: "class_name", "الصف": "class_name", grade: "class_name",
+      section_name: "section_name", "الشعبة": "section_name", section: "section_name",
+    };
+
+    content.innerHTML = `
+      <a href="/admin/students.html" class="text-muted" style="display:inline-block; margin-bottom:16px;">← رجوع لقائمة الطلاب</a>
+      <h1>استيراد الطلاب من ملف CSV</h1>
+      <p class="text-muted" style="margin-bottom:20px;">
+        الأعمدة المتوقعة: <strong>full_name</strong> (أو "الاسم" — مطلوب)، birth_date (اختياري، بصيغة YYYY-MM-DD)،
+        class_name وsection_name (اختياري — لتعيين الصف والشعبة تلقائياً). لا تحتاج إدخال أي HAMURA ID أو كود تفعيل —
+        هذه فقط لبيانات الطلاب أنفسهم، وليست حسابات دخول.
+      </p>
+      <div class="card" style="margin-bottom:20px;">
+        <div class="field" style="margin-bottom:0;">
+          <label for="csv-file">اختر ملف CSV</label>
+          <input type="file" id="csv-file" accept=".csv,text/csv" />
+        </div>
+      </div>
+      <div id="import-wrap"></div>
+    `;
+
+    const allClasses = (await guard(() => listClasses())) ?? [];
+    const allSections = (await guard(() => listSections())) ?? [];
+    const existingStudents = (await guard(() => listStudents({ includeInactive: true }))) ?? [];
+
+    function findSection(className, sectionName) {
+      if (!className && !sectionName) return { section_id: null, error: null };
+      const cls = allClasses.find((c) => c.name.trim().toLowerCase() === (className ?? "").trim().toLowerCase());
+      if (!cls) return { section_id: null, error: `الصف "${className}" غير موجود` };
+      const sec = allSections.find((s) => s.class_id === cls.id && s.name.trim().toLowerCase() === (sectionName ?? "").trim().toLowerCase());
+      if (!sec) return { section_id: null, error: `الشعبة "${sectionName}" غير موجودة في الصف "${className}"` };
+      return { section_id: sec.id, error: null };
+    }
+
+    function isValidDate(value) {
+      if (!value) return true;
+      return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(value).getTime());
+    }
+
+    let parsedRows = [];
+
+    document.getElementById("csv-file").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      const wrap = document.getElementById("import-wrap");
+      if (!file) {
+        wrap.innerHTML = "";
+        return;
+      }
+      const text = await file.text();
+      const table = parseCsv(text);
+      if (table.length < 2) {
+        wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">الملف فارغ أو بدون بيانات</div></div>`;
+        return;
+      }
+
+      const headerRow = table[0].map((h) => h.trim());
+      const fieldByIndex = headerRow.map((h) => HEADER_MAP[h.trim()] ?? HEADER_MAP[h.trim().toLowerCase()] ?? null);
+      if (!fieldByIndex.includes("full_name")) {
+        wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">لم يتم العثور على عمود "full_name" أو "الاسم"</div><p>راجع صيغة الملف والعناوين المتوقعة أعلاه</p></div>`;
+        return;
+      }
+
+      const seenInFile = new Set();
+      parsedRows = table.slice(1).map((cells, idx) => {
+        const record = {};
+        fieldByIndex.forEach((field, i) => {
+          if (field) record[field] = (cells[i] ?? "").trim();
+        });
+        const rowNum = idx + 2;
+        const errors = [];
+
+        if (!record.full_name) errors.push("الاسم مطلوب");
+        if (record.birth_date && !isValidDate(record.birth_date)) errors.push("تاريخ الميلاد غير صحيح (YYYY-MM-DD)");
+
+        let sectionId = null;
+        if (record.class_name || record.section_name) {
+          const { section_id, error } = findSection(record.class_name, record.section_name);
+          if (error) errors.push(error);
+          sectionId = section_id;
+        }
+
+        const dedupeKey = `${record.full_name?.toLowerCase()}|${sectionId ?? ""}`;
+        let duplicate = false;
+        if (record.full_name) {
+          if (seenInFile.has(dedupeKey)) duplicate = true;
+          seenInFile.add(dedupeKey);
+          const existsInDb = existingStudents.some(
+            (s) => s.full_name.trim().toLowerCase() === record.full_name.toLowerCase() && s.section_id === sectionId
+          );
+          if (existsInDb) duplicate = true;
+        }
+
+        return { rowNum, ...record, section_id: sectionId, errors, duplicate, skip: duplicate };
+      });
+
+      renderPreview();
+    });
+
+    function renderPreview() {
+      const wrap = document.getElementById("import-wrap");
+      const validCount = parsedRows.filter((r) => r.errors.length === 0 && !r.skip).length;
+      const errorCount = parsedRows.filter((r) => r.errors.length > 0).length;
+      const dupCount = parsedRows.filter((r) => r.duplicate).length;
+
+      wrap.innerHTML = `
+        <div class="grid grid-3" style="margin-bottom:16px;">
+          <div class="stat-card"><div><div class="stat-value">${validCount}</div><div class="stat-label">سيُستوردون</div></div></div>
+          <div class="stat-card"><div><div class="stat-value" style="color:var(--warning);">${dupCount}</div><div class="stat-label">مكررون (متجاوَزون)</div></div></div>
+          <div class="stat-card"><div><div class="stat-value" style="color:var(--danger);">${errorCount}</div><div class="stat-label">أخطاء</div></div></div>
+        </div>
+        <div class="table-wrap" style="margin-bottom:16px; max-height:420px; overflow-y:auto;">
+          <table class="table">
+            <thead><tr><th>#</th><th>الاسم</th><th>تاريخ الميلاد</th><th>الصف - الشعبة</th><th>الحالة</th><th></th></tr></thead>
+            <tbody>
+              ${parsedRows
+                .map((r) => {
+                  const statusBadge =
+                    r.errors.length > 0
+                      ? `<span class="badge badge-danger">${escapeHtml(r.errors.join("، "))}</span>`
+                      : r.duplicate
+                      ? `<span class="badge badge-warning">مكرر</span>`
+                      : `<span class="badge badge-success">جاهز</span>`;
+                  return `
+                <tr>
+                  <td>${r.rowNum}</td>
+                  <td>${escapeHtml(r.full_name || "—")}</td>
+                  <td>${escapeHtml(r.birth_date || "—")}</td>
+                  <td>${escapeHtml([r.class_name, r.section_name].filter(Boolean).join(" - ") || "—")}</td>
+                  <td>${statusBadge}</td>
+                  <td>${r.duplicate && r.errors.length === 0 ? `<button class="btn btn-ghost btn-sm" data-force="${r.rowNum}">استيراد رغم التكرار</button>` : ""}</td>
+                </tr>`;
+                })
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+        <button class="btn btn-success" id="commit-btn" ${validCount === 0 ? "disabled" : ""}>استيراد ${validCount} طالب</button>
+        <div id="commit-result" style="margin-top:14px;"></div>
+      `;
+
+      wrap.querySelectorAll("[data-force]").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const row = parsedRows.find((r) => r.rowNum === Number(btn.dataset.force));
+          if (row) row.skip = false;
+          renderPreview();
+        })
+      );
+
+      document.getElementById("commit-btn").addEventListener("click", async () => {
+        const commitBtn = document.getElementById("commit-btn");
+        commitBtn.disabled = true;
+        commitBtn.textContent = "جارِ الاستيراد...";
+
+        const rows = parsedRows
+          .filter((r) => r.errors.length === 0 && !r.skip)
+          .map((r) => ({
+            full_name: r.full_name,
+            birth_date: r.birth_date || null,
+            section_id: r.section_id,
+            school_id: profile.school_id,
+            branch_id: profile.branch_id ?? allClasses.find((c) => c.id === allSections.find((s) => s.id === r.section_id)?.class_id)?.branch_id ?? null,
+          }));
+
+        try {
+          const { inserted, total } = await bulkCreateStudents(rows);
+          document.getElementById("commit-result").innerHTML = `<p class="text-muted">تم استيراد ${inserted} من ${total} طالب بنجاح.</p>`;
+          showToast(`تم استيراد ${inserted} طالب`, "success");
+        } catch (err) {
+          const partial = err.inserted ?? 0;
+          document.getElementById("commit-result").innerHTML = `<p class="text-muted">تم استيراد ${partial} طالب قبل حدوث خطأ: ${escapeHtml(err.message)}</p>`;
+          showToast(err.message, "danger");
+        }
+        commitBtn.textContent = "استيراد";
+      });
+    }
+  </script>
+</body>
+</html>

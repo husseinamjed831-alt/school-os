@@ -48,7 +48,18 @@ export async function updateSchool(id, data) {
 
 export async function deactivateSchool(id) {
   try {
-    const { error } = await supabase.from("schools").update({ is_active: false }).eq("id", id);
+    const { error } = await supabase.from("schools").update({ is_active: false, subscription_status: "suspended" }).eq("id", id);
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    throw new Error(toArabicError(err.message));
+  }
+}
+
+/** Re-enables a suspended school — does not touch or restore any of its data. */
+export async function activateSchool(id) {
+  try {
+    const { error } = await supabase.from("schools").update({ is_active: true, subscription_status: "active" }).eq("id", id);
     if (error) throw error;
     return true;
   } catch (err) {

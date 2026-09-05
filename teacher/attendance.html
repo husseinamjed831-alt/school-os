@@ -99,13 +99,12 @@
           </table>
         </div>
         <div class="flex-between" style="margin-top:16px;">
-          <p class="text-muted" id="progress-hint">0 من ${roster.length} تم تحديدهم</p>
+          <p class="text-muted">الجميع "حاضر" افتراضياً — عدّل حالة أي طالب ثم احفظ</p>
           <button class="btn btn-success" id="save-btn">حفظ الحضور</button>
         </div>
       `;
 
       const state = new Map(roster.map((r) => [r.student_id, r.status]));
-      updateProgress();
 
       wrap.querySelectorAll("tr[data-student-id]").forEach((row) => {
         const studentId = row.dataset.studentId;
@@ -116,27 +115,23 @@
               b.classList.toggle("btn-primary", b === btn);
               b.classList.toggle("btn-ghost", b !== btn);
             });
-            updateProgress();
           });
         });
       });
 
-      function updateProgress() {
-        const done = [...state.values()].filter(Boolean).length;
-        document.getElementById("progress-hint").textContent = `${done} من ${roster.length} تم تحديدهم`;
-      }
-
-      document.getElementById("save-btn").addEventListener("click", async () => {
-        const records = [...state.entries()]
-          .filter(([, status]) => status)
-          .map(([student_id, status]) => ({ student_id, status }));
-        if (records.length === 0) {
-          showToast("لم يتم تحديد أي حالة بعد", "danger");
-          return;
-        }
+      document.getElementById("save-btn").addEventListener("click", async (e) => {
+        const btn = e.currentTarget;
+        // Every student in the roster always has a status now (defaulted
+        // to "present" by getSectionAttendanceForDate) — save the whole
+        // roster, not just the ones a teacher happened to click.
+        const records = [...state.entries()].map(([student_id, status]) => ({ student_id, status }));
+        btn.disabled = true;
+        btn.textContent = "جارِ الحفظ...";
         const result = await guard(() =>
           bulkSaveAttendance({ school_id: profile.school_id, date, recorded_by: profile.id, records })
         );
+        btn.disabled = false;
+        btn.textContent = "حفظ الحضور";
         if (result) showToast("تم حفظ الحضور بنجاح", "success");
       });
     }

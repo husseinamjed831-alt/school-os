@@ -16,12 +16,21 @@
 //                       to their own branch_id
 //   - anyone else   -> rejected
 //
+// Teacher accounts (role === "teacher") do NOT take a caller-supplied
+// password. Instead this function sets an unusable random password on
+// auth.users, marks profiles.activation_status = 'pending', and issues a
+// one-time activation code (hashed before storage, plaintext returned
+// exactly once in this response). The teacher sets their own password via
+// the public activate-account Edge Function using their HAMURA ID + code.
+// See sql/008_account_activation.sql and activate-account/index.ts.
+//
 // Deploy: supabase functions deploy create-user
 // Secrets required (set via `supabase secrets set`) — SUPABASE_URL and
 // SUPABASE_SERVICE_ROLE_KEY are auto-injected by the platform for every
 // Edge Function, you do not set them yourself.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { ACTIVATION_CODE_TTL_MS, generateActivationCode, hashActivationCode } from "../_shared/activation.ts";
 
 const ROLES_BY_CALLER = {
   super_admin: ["school_admin", "branch_admin", "teacher", "student", "parent"],
@@ -110,7 +119,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const { email, password, full_name, role, branch_id, phone } = body;
-    if (!email || !password || !full_name || !role) {
+    const isTeacher = role === "teacher";
+    // Teachers activate via HAMURA ID + one-time code instead of an
+    // admin-supplied password — see the activation flow below.
+    if (!email || !full_name || !role || (!isTeacher && !password)) {
       return jsonResponse({ error: "الرجاء تعبئة كل الحقول المطلوبة" }, 400);
     }
     if (!allowedRoles.includes(role)) {
@@ -126,34 +138,41 @@ Deno.serve(async (req: Request) => {
     const targetSchoolId = callerProfile.role === "super_admin" ? body.school_id : callerProfile.school_id;
     const targetBranchId = callerProfile.role === "branch_admin" ? callerProfile.branch_id : branch_id ?? null;
 
+    // Teachers get an unusable random password here — they never receive
+    // it, and set their real one through activate-account.
     const { data: created, error: createError } = await admin.auth.admin.createUser({
       email,
-      password,
+      password: isTeacher ? crypto.randomUUID() + crypto.randomUUID() : password,
       email_confirm: true,
     });
     if (createError || !created?.user) {
       return jsonResponse({ error: `تعذر إنشاء الحساب: ${createError?.message ?? "خطأ غير معروف"}` }, 400);
     }
 
-    const { error: insertError } = await admin.from("profiles").insert({
-      id: created.user.id,
-      school_id: targetSchoolId,
-      branch_id: targetBranchId,
-      role,
-      full_name,
-      phone: phone ?? null,
-    });
+    const { data: insertedProfile, error: insertError } = await admin
+      .from("profiles")
+      .insert({
+        id: created.user.id,
+        school_id: targetSchoolId,
+        branch_id: targetBranchId,
+        role,
+        full_name,
+        phone: phone ?? null,
+        activation_status: isTeacher ? "pending" : "active",
+      })
+      .select("hamura_id")
+      .single();
 
-    if (insertError) {
+    if (insertError || !insertedProfile) {
       await admin.auth.admin.deleteUser(created.user.id);
-      return jsonResponse({ error: `تعذر إنشاء ملف المستخدم: ${insertError.message}` }, 400);
+      return jsonResponse({ error: `تعذر إنشاء ملف المستخدم: ${insertError?.message ?? "خطأ غير معروف"}` }, 400);
     }
 
     // Teachers additionally need a row in `teachers` — subjects.teacher_id
     // and every section-scoping check (fn_teaches_section/fn_teaches_student)
     // resolve through it, so a teacher profile without one is invisible to
     // their own classes.
-    if (role === "teacher") {
+    if (isTeacher) {
       const { error: teacherError } = await admin.from("teachers").insert({
         school_id: targetSchoolId,
         branch_id: targetBranchId,
@@ -164,6 +183,31 @@ Deno.serve(async (req: Request) => {
         await admin.auth.admin.deleteUser(created.user.id);
         return jsonResponse({ error: `تعذر إنشاء سجل المعلم: ${teacherError.message}` }, 400);
       }
+
+      const activationCode = generateActivationCode();
+      const { error: activationError } = await admin.from("account_activations").insert({
+        profile_id: created.user.id,
+        school_id: targetSchoolId,
+        code_hash: await hashActivationCode(activationCode),
+        expires_at: new Date(Date.now() + ACTIVATION_CODE_TTL_MS).toISOString(),
+        created_by: authData.user.id,
+      });
+      if (activationError) {
+        await admin.from("teachers").delete().eq("profile_id", created.user.id);
+        await admin.from("profiles").delete().eq("id", created.user.id);
+        await admin.auth.admin.deleteUser(created.user.id);
+        return jsonResponse({ error: `تعذر إنشاء كود التفعيل: ${activationError.message}` }, 400);
+      }
+
+      return jsonResponse(
+        {
+          id: created.user.id,
+          hamura_id: insertedProfile.hamura_id,
+          activation_code: activationCode,
+          expires_at_hours: ACTIVATION_CODE_TTL_MS / 3600000,
+        },
+        201
+      );
     }
 
     return jsonResponse({ id: created.user.id }, 201);

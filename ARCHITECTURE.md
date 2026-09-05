@@ -162,6 +162,32 @@ scaffolding with `TODO`.
   phase4_rls_tests.sql` is how you get an actual pass/fail, not my
   assurance.
 
+## 9.1 Teacher account activation (HAMURA ID + one-time code)
+
+Added outside the phased roadmap above, on live production data (no
+existing row deleted/altered beyond additive columns — see
+`sql/010_account_activation.sql`). Replaces admin-typed initial passwords
+for **teacher accounts only** (branch_admin/parent/student creation is
+unchanged):
+
+- `create-user` no longer takes a `password` for `role: "teacher"`. It
+  generates a unique `hamura_id` (DB default via `generate_hamura_id()`),
+  sets an unusable random `auth.users` password, marks
+  `profiles.activation_status = 'pending'`, and issues a one-time
+  activation code — hashed (SHA-256) into `account_activations`, plaintext
+  returned exactly once in the response.
+- `reissue-activation-code` (school_admin/branch_admin/super_admin, same
+  tenant-scoping as `create-user`) invalidates any unused code and issues
+  a new one — only while `activation_status = 'pending'`.
+- `activate-account` (public, `--no-verify-jwt` — the teacher has no
+  session yet) takes `hamura_id` + `code` + a new password, verifies the
+  code (max 5 attempts, 72h expiry) and sets the real password.
+- `admin/teacher-profile.html` shows the HAMURA ID and activation state to
+  school_admin/branch_admin; `activate.html` is the public activation
+  form, linked from the login page.
+- Existing profiles were backfilled with a `hamura_id` and default to
+  `activation_status = 'active'` — no current user is affected.
+
 ## 8. What I need from you before Phase 4+
 
 - Supabase project URL + anon key (for `js/lib/supabase-client.js`)

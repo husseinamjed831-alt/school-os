@@ -18,7 +18,13 @@
       <form id="user-form">
         <div class="field"><label for="f-name">الاسم الكامل</label><input id="f-name" required /></div>
         <div class="field"><label for="f-email">البريد الإلكتروني</label><input type="email" id="f-email" required /></div>
-        <div class="field"><label for="f-password">كلمة المرور المبدئية</label><input type="password" id="f-password" required minlength="8" /></div>
+        <div class="field" id="f-password-field">
+          <label for="f-password">كلمة المرور المبدئية</label>
+          <input type="password" id="f-password" required minlength="8" />
+        </div>
+        <p class="text-muted" id="f-teacher-note" style="display:none; font-size:12px; margin:-8px 0 14px;">
+          لا حاجة لكلمة مرور — سيُولَّد تلقائياً HAMURA ID وكود تفعيل مؤقت يظهر لك بعد الإنشاء لتسليمه للمعلم.
+        </p>
         <div class="field"><label for="f-role">الدور</label>
           <select id="f-role" required>
             <option value="teacher">معلم</option>
@@ -41,6 +47,7 @@
     import { mountShell } from "/js/lib/shell.js";
     import { listUsers, createUserAccount, deactivateUser } from "/js/api/users.js";
     import { guard, showToast, escapeHtml } from "/js/lib/utils.js";
+    import { showActivationCodeModal } from "/js/lib/activation-modal.js";
 
     const profile = await requireRole(["school_admin", "branch_admin"]);
     const content = mountShell(profile, "users");
@@ -81,6 +88,20 @@
 
     const overlay = document.getElementById("modal-overlay");
     const form = document.getElementById("user-form");
+    const roleSelect = document.getElementById("f-role");
+    const passwordField = document.getElementById("f-password-field");
+    const passwordInput = document.getElementById("f-password");
+    const teacherNote = document.getElementById("f-teacher-note");
+
+    function syncPasswordFieldToRole() {
+      const isTeacher = roleSelect.value === "teacher";
+      passwordField.style.display = isTeacher ? "none" : "";
+      teacherNote.style.display = isTeacher ? "" : "none";
+      passwordInput.required = !isTeacher;
+    }
+    roleSelect.addEventListener("change", syncPasswordFieldToRole);
+    syncPasswordFieldToRole();
+
     document.getElementById("add-btn").addEventListener("click", () => overlay.classList.add("is-open"));
     document.getElementById("modal-close").addEventListener("click", closeModal);
     document.getElementById("modal-cancel").addEventListener("click", closeModal);
@@ -88,6 +109,7 @@
     function closeModal() {
       overlay.classList.remove("is-open");
       form.reset();
+      syncPasswordFieldToRole();
     }
 
     form.addEventListener("submit", async (e) => {
@@ -96,13 +118,14 @@
       submitBtn.disabled = true;
       submitBtn.textContent = "جارِ الإنشاء...";
 
+      const isTeacher = roleSelect.value === "teacher";
       const payload = {
         full_name: document.getElementById("f-name").value.trim(),
         email: document.getElementById("f-email").value.trim(),
-        password: document.getElementById("f-password").value,
-        role: document.getElementById("f-role").value,
+        role: roleSelect.value,
         phone: document.getElementById("f-phone").value.trim() || undefined,
       };
+      if (!isTeacher) payload.password = passwordInput.value;
       if (profile.role === "branch_admin") payload.branch_id = profile.branch_id;
 
       const result = await guard(() => createUserAccount(payload));
@@ -110,8 +133,12 @@
       submitBtn.textContent = "إنشاء الحساب";
 
       if (result) {
-        showToast("تم إنشاء الحساب بنجاح", "success");
         closeModal();
+        if (result.activation_code) {
+          showActivationCodeModal(result);
+        } else {
+          showToast("تم إنشاء الحساب بنجاح", "success");
+        }
         await renderTable();
       }
     });
@@ -140,7 +167,10 @@
                   <td><span class="badge badge-primary">${ROLE_LABEL[u.role] ?? u.role}</span></td>
                   <td>${escapeHtml(u.phone ?? "—")}</td>
                   <td><span class="badge ${u.is_active ? "badge-success" : "badge-neutral"}">${u.is_active ? "نشط" : "معطل"}</span></td>
-                  <td>${u.is_active ? `<button class="btn btn-danger btn-sm" data-deactivate="${u.id}">تعطيل</button>` : ""}</td>
+                  <td class="flex gap-8">
+                    ${u.role === "teacher" ? `<a class="btn btn-ghost btn-sm" href="/admin/teacher-profile.html?id=${u.id}">الملف</a>` : ""}
+                    ${u.is_active ? `<button class="btn btn-danger btn-sm" data-deactivate="${u.id}">تعطيل</button>` : ""}
+                  </td>
                 </tr>`
                 )
                 .join("")}

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تفعيل الحساب — School OS</title>
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">H</div>
+      <h1 class="auth-title">تفعيل حساب المعلم</h1>
+      <p class="auth-subtitle">أدخل HAMURA ID وكود التفعيل اللي سلّمتك إياهم إدارة المدرسة، وحدد كلمة مرورك</p>
+
+      <div class="auth-error" id="activate-error"></div>
+      <div class="auth-error" id="activate-success" style="background: var(--success-light); color: #15803D; display:none;"></div>
+
+      <form id="activate-form">
+        <div class="field">
+          <label for="hamura-id">HAMURA ID</label>
+          <input type="text" id="hamura-id" required autocomplete="off" style="text-transform:uppercase;" placeholder="HM-XXXXXX" />
+        </div>
+        <div class="field">
+          <label for="code">كود التفعيل</label>
+          <input type="text" id="code" required autocomplete="off" style="text-transform:uppercase;" />
+        </div>
+        <div class="field">
+          <label for="new-password">كلمة المرور الجديدة</label>
+          <input type="password" id="new-password" required minlength="8" autocomplete="new-password" />
+        </div>
+        <div class="field">
+          <label for="confirm-password">تأكيد كلمة المرور</label>
+          <input type="password" id="confirm-password" required minlength="8" autocomplete="new-password" />
+        </div>
+        <button type="submit" class="btn btn-primary" id="activate-submit" style="width:100%;">تفعيل الحساب</button>
+      </form>
+
+      <p class="text-muted" style="text-align:center; font-size:13px; margin-top:18px;">
+        فعّلت حسابك من قبل؟ <a href="/index.html">تسجيل الدخول</a>
+      </p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from "/js/lib/supabase-client.js";
+    import { toArabicError } from "/js/lib/utils.js";
+
+    const form = document.getElementById("activate-form");
+    const errorBox = document.getElementById("activate-error");
+    const successBox = document.getElementById("activate-success");
+    const submitBtn = document.getElementById("activate-submit");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorBox.classList.remove("is-visible");
+      successBox.style.display = "none";
+
+      const hamuraId = document.getElementById("hamura-id").value.trim();
+      const code = document.getElementById("code").value.trim();
+      const newPassword = document.getElementById("new-password").value;
+      const confirmPassword = document.getElementById("confirm-password").value;
+
+      if (newPassword !== confirmPassword) {
+        errorBox.textContent = "كلمتا المرور غير متطابقتين";
+        errorBox.classList.add("is-visible");
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "جارِ التفعيل...";
+
+      try {
+        const { data, error } = await supabase.functions.invoke("activate-account", {
+          body: { hamura_id: hamuraId, code, new_password: newPassword },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+
+        form.style.display = "none";
+        successBox.textContent = "تم تفعيل الحساب بنجاح. يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.";
+        successBox.style.display = "block";
+        setTimeout(() => (window.location.href = "/index.html"), 2500);
+      } catch (err) {
+        errorBox.textContent = toArabicError(err.message || "تعذر تفعيل الحساب");
+        errorBox.classList.add("is-visible");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "تفعيل الحساب";
+      }
+    });
+  </script>
+</body>
+</html>

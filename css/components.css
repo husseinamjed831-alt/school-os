@@ -352,25 +352,86 @@
 .stat-value { font-size: 24px; font-weight: 800; line-height: 1.2; }
 .stat-label { font-size: 13px; color: var(--text-muted); }
 
-/* ---------- Student identity card ---------- */
-.id-card { animation: fade-in-up 0.4s ease both; }
-.id-chips {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
+/* ---------- Student identity card: glass card + floating stat badges ---------- */
+@keyframes id-float-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
 }
-.id-chip {
+.id-chip-label { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+.id-chip-value { font-size: 13px; font-weight: 700; color: var(--text); }
+
+.id-hero {
+  position: relative;
+  padding: 28px 100px 56px;
+  margin-bottom: 24px;
+  min-height: 300px;
+  background:
+    radial-gradient(circle at 25% 15%, var(--primary-light), transparent 55%),
+    radial-gradient(circle at 80% 85%, var(--info-light), transparent 55%);
+  border-radius: var(--radius-lg);
+}
+.id-glass-card {
+  position: relative;
+  z-index: 2;
+  max-width: 380px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.62));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  box-shadow: var(--shadow-lg);
+  transform: rotate(-2deg);
+  transition: transform var(--transition);
+  animation: fade-in-up 0.5s ease both;
+}
+.id-glass-card:hover { transform: rotate(0deg); }
+.id-glass-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  background: var(--bg);
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+  font-size: 13px;
+  color: var(--text);
+}
+.id-glass-row:last-child { border-bottom: none; }
+.id-glass-row svg { color: var(--primary); flex-shrink: 0; }
+
+.id-float-badge {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 12px 14px;
-  color: var(--primary-hover);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-md);
+  animation: fade-in-up 0.5s ease both, id-float-bob 4.5s ease-in-out infinite;
 }
-.id-chip-label { font-size: 12px; color: var(--text-muted); margin-bottom: 2px; }
-.id-chip-value { font-size: 14px; font-weight: 700; color: var(--text); }
+.id-float-icon {
+  width: 36px; height: 36px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--primary-light); color: var(--primary-hover);
+  flex-shrink: 0;
+}
+.id-float-tl { top: 8px; left: 8px; }
+.id-float-tr { top: 8px; right: 8px; }
+.id-float-bl { bottom: 8px; left: 24px; }
+.id-float-br { bottom: 8px; right: 24px; }
+
+@media (max-width: 720px) {
+  .id-hero { padding: 20px; min-height: auto; display: flex; flex-direction: column; gap: 12px; }
+  .id-glass-card { max-width: none; transform: none; }
+  .id-glass-card:hover { transform: none; }
+  .id-float-badge { position: static; animation: fade-in-up 0.5s ease both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .id-glass-card, .id-float-badge { animation: none !important; }
+}
 
 /* ---------- Student cards grid ---------- */
 .student-cards-grid {

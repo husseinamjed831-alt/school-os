@@ -61,58 +61,50 @@ export async function renderStudentProfile(container, studentId, options = {}) {
 
   const studentNumber = student.id.slice(0, 8).toUpperCase();
 
+  // Up to 4 floating badges around the glass card — same data as before,
+  // just presented as floating chips instead of an inline grid.
+  const floatBadges = [
+    { icon: ICON_ATTENDANCE, label: "الحضور", value: attendanceRate != null ? attendanceRate + "%" : "غير متوفر", pos: "tr" },
+    { icon: ICON_GRADE, label: "المعدل", value: avgGrade != null ? Math.round(avgGrade) + "%" : "غير متوفر", pos: "tl" },
+    ...(balance
+      ? [{ icon: ICON_FEE, label: "الرسوم", value: balance.remaining > 0 ? "متبقي" : "مدفوعة", pos: "br" }]
+      : []),
+    ...(includeStaffSections
+      ? [{
+          icon: ICON_RISK,
+          label: "المخاطر",
+          value: riskScore ? RISK_LABEL[riskScore.risk_level] : "غير متوفر",
+          pos: "bl",
+          badgeClass: riskScore ? RISK_BADGE[riskScore.risk_level] : null,
+        }]
+      : []),
+  ];
+
   container.innerHTML = `
-    <div class="card id-card" style="margin-bottom:20px;">
-      <div class="flex-between" style="align-items:flex-start; margin-bottom:18px;">
-        <div class="flex gap-16" style="align-items:center;">
-          <div class="avatar" style="width:64px; height:64px; font-size:20px;">${initials(student.full_name)}</div>
-          <div>
-            <h2 style="margin-bottom:2px;">${escapeHtml(student.full_name)}</h2>
-            <p class="text-muted" style="font-size:13px; margin:0;">
-              ولي الأمر: ${student.parent ? escapeHtml(student.parent.full_name) + (student.parent.phone ? " - " + escapeHtml(student.parent.phone) : "") : "غير مسجّل"}
-            </p>
-          </div>
+    <div class="id-hero">
+      <div class="id-glass-card">
+        <div class="flex-between" style="align-items:flex-start; margin-bottom:16px;">
+          <div class="avatar" style="width:56px; height:56px; font-size:18px;">${initials(student.full_name)}</div>
+          <span class="badge ${student.is_active ? "badge-success" : "badge-neutral"}">${student.is_active ? "نشط" : "معطل"}</span>
         </div>
-        <span class="badge ${student.is_active ? "badge-success" : "badge-neutral"}">${student.is_active ? "نشط" : "معطل"}</span>
+        <h2 style="margin-bottom:14px;">${escapeHtml(student.full_name)}</h2>
+        <div class="id-glass-row">${ICON_SUBJECT}<span>${student.sections ? `${escapeHtml(student.sections.classes?.name ?? "")} - ${escapeHtml(student.sections.name)}` : "لم يُحدَّد الصف"}</span></div>
+        <div class="id-glass-row">${ICON_ID}<span>${studentNumber}</span></div>
+        <div class="id-glass-row">${ICON_CALENDAR}<span>${formatDate(student.enrolled_at)}</span></div>
+        <div class="id-glass-row">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          <span>${student.parent ? escapeHtml(student.parent.full_name) + (student.parent.phone ? " - " + escapeHtml(student.parent.phone) : "") : "بدون ولي أمر مسجّل"}</span>
+        </div>
       </div>
-      <div class="id-chips">
-        <div class="id-chip">
-          ${ICON_SUBJECT}
-          <div><div class="id-chip-label">الصف والشعبة</div><div class="id-chip-value">${student.sections ? `${escapeHtml(student.sections.classes?.name ?? "")} - ${escapeHtml(student.sections.name)}` : "غير محدد"}</div></div>
-        </div>
-        <div class="id-chip">
-          ${ICON_ID}
-          <div><div class="id-chip-label">رقم الطالب</div><div class="id-chip-value">${studentNumber}</div></div>
-        </div>
-        <div class="id-chip">
-          ${ICON_CALENDAR}
-          <div><div class="id-chip-label">تاريخ التسجيل</div><div class="id-chip-value">${formatDate(student.enrolled_at)}</div></div>
-        </div>
-        <div class="id-chip">
-          ${ICON_ATTENDANCE}
-          <div><div class="id-chip-label">نسبة الحضور</div><div class="id-chip-value">${attendanceRate != null ? attendanceRate + "%" : "غير متوفر"}</div></div>
-        </div>
-        <div class="id-chip">
-          ${ICON_GRADE}
-          <div><div class="id-chip-label">المعدل العام</div><div class="id-chip-value">${avgGrade != null ? Math.round(avgGrade) + "%" : "غير متوفر"}</div></div>
-        </div>
-        ${
-          balance
-            ? `<div class="id-chip">
-                ${ICON_FEE}
-                <div><div class="id-chip-label">حالة الرسوم</div><div class="id-chip-value">${balance.remaining > 0 ? formatCurrency(balance.remaining, balance.currency) + " متبقي" : "مدفوعة بالكامل"}</div></div>
-              </div>`
-            : ""
-        }
-        ${
-          includeStaffSections
-            ? `<div class="id-chip">
-                ${ICON_RISK}
-                <div><div class="id-chip-label">مؤشر المخاطر</div><div class="id-chip-value">${riskScore ? `<span class="badge ${RISK_BADGE[riskScore.risk_level]}">${RISK_LABEL[riskScore.risk_level]} (${riskScore.risk_score}/100)</span>` : "غير متوفر"}</div></div>
-              </div>`
-            : ""
-        }
-      </div>
+      ${floatBadges
+        .map(
+          (b, i) => `
+        <div class="id-float-badge id-float-${b.pos}" style="animation-delay:${i * 0.5}s;">
+          <div class="id-float-icon">${b.icon}</div>
+          <div><div class="id-chip-label">${b.label}</div><div class="id-chip-value">${b.badgeClass ? `<span class="badge ${b.badgeClass}">${escapeHtml(b.value)}</span>` : escapeHtml(b.value)}</div></div>
+        </div>`
+        )
+        .join("")}
     </div>
 
     ${

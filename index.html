@@ -10,27 +10,63 @@
   <link rel="stylesheet" href="/css/landing.css" />
 </head>
 <body>
+  <div class="lp-topbanner" id="lp-topbanner">
+    <span>🎉 جرّب HAMURA مجاناً — فترة تجريبية كاملة الميزات، بدون بطاقة دفع.</span>
+    <button type="button" class="lp-topbanner-close" id="lp-topbanner-close" aria-label="إغلاق">×</button>
+  </div>
+
   <header class="lp-nav">
     <div class="lp-nav-inner">
       <div class="lp-brand"><span class="lp-brand-mark">H</span> HAMURA</div>
       <nav class="lp-nav-links">
         <a href="/login.html">تسجيل الدخول</a>
-        <a href="/register.html" class="btn btn-primary btn-sm">سجّل مدرستك مجاناً</a>
+        <a href="/register.html" class="btn btn-primary btn-sm">ابدأ الآن</a>
       </nav>
     </div>
   </header>
 
   <main>
-    <section class="lp-hero">
-      <div class="lp-hero-inner">
-        <h1>نظام إدارة مدرسي واحد يربط الإدارة والمعلمين والطلاب وأولياء الأمور</h1>
+    <section class="lp-hero-v2">
+      <div class="lp-hero-v2-inner">
+        <div class="lp-hero-wordmark">HAMURA</div>
+        <h1 class="lp-hero-v2-headline">حيث المدارس <span class="lp-gradient-text">تُدار بذكاء</span></h1>
         <p class="lp-hero-sub">
-          الحضور، الدرجات، المالية، والتقارير — كل شي بمكان واحد، بصلاحيات محددة لكل دور،
-          وبدون تعقيد. تبدأ مدرستك مجاناً بفترة تجريبية.
+          منصة واحدة تربط الإدارة والمعلمين والطلاب وأولياء الأمور — حضور، درجات،
+          مالية، وتقارير حقيقية، بصلاحيات محددة لكل دور.
         </p>
         <div class="lp-hero-actions">
-          <a href="/register.html" class="btn btn-primary">سجّل مدرستك الآن</a>
+          <a href="/register.html" class="btn btn-primary">سجّل مدرستك مجاناً</a>
           <a href="/login.html" class="btn btn-ghost">لدي حساب بالفعل</a>
+        </div>
+        <div class="lp-badges-row">
+          <span class="lp-badge">🔒 عزل بيانات كامل بين المدارس</span>
+          <span class="lp-badge">⚡ تفعيل حسابات تلقائي</span>
+          <span class="lp-badge">🌐 عربي RTL بالكامل</span>
+        </div>
+      </div>
+
+      <div class="lp-float-cards" aria-hidden="true">
+        <svg class="lp-float-lines" viewBox="0 0 1000 640" preserveAspectRatio="none">
+          <line x1="500" y1="330" x2="175" y2="150" />
+          <line x1="500" y1="330" x2="825" y2="150" />
+          <line x1="500" y1="330" x2="175" y2="510" />
+          <line x1="500" y1="330" x2="825" y2="510" />
+        </svg>
+        <div class="lp-float-card lp-float-tl">
+          <div class="lp-float-icon" style="background:var(--primary-light);">🧑‍💼</div>
+          <div><div class="lp-float-title">المسؤول</div><div class="lp-float-sub">لوحة التحكم</div></div>
+        </div>
+        <div class="lp-float-card lp-float-tr">
+          <div class="lp-float-icon" style="background:var(--success-light);">🎓</div>
+          <div><div class="lp-float-title">المعلم</div><div class="lp-float-sub">الحضور والدرجات</div></div>
+        </div>
+        <div class="lp-float-card lp-float-bl">
+          <div class="lp-float-icon" style="background:var(--info-light);">📘</div>
+          <div><div class="lp-float-title">الطالب</div><div class="lp-float-sub">درجاتي وحضوري</div></div>
+        </div>
+        <div class="lp-float-card lp-float-br">
+          <div class="lp-float-icon" style="background:var(--warning-light);">❤️</div>
+          <div><div class="lp-float-title">ولي الأمر</div><div class="lp-float-sub">متابعة الأبناء</div></div>
         </div>
       </div>
     </section>
@@ -139,6 +175,21 @@
     // Already logged in? skip straight to the dashboard instead of the pitch.
     getMyProfile().then((profile) => {
       if (profile) window.location.href = homeForRole(profile.role);
+    });
+
+    const banner = document.getElementById("lp-topbanner");
+    try {
+      if (localStorage.getItem("hamura_banner_dismissed") === "1") banner.style.display = "none";
+    } catch {
+      /* localStorage unavailable (private mode etc.) — banner just stays visible */
+    }
+    document.getElementById("lp-topbanner-close").addEventListener("click", () => {
+      banner.style.display = "none";
+      try {
+        localStorage.setItem("hamura_banner_dismissed", "1");
+      } catch {
+        /* ignore — nothing to persist, banner still hides for this visit */
+      }
     });
   </script>
 </body>

@@ -3,71 +3,142 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>تسجيل الدخول — School OS</title>
+  <title>HAMURA — نظام إدارة مدرسي متكامل</title>
   <link rel="stylesheet" href="/css/variables.css" />
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/components.css" />
+  <link rel="stylesheet" href="/css/landing.css" />
 </head>
 <body>
-  <div class="auth-page">
-    <div class="auth-card">
-      <div class="auth-logo">S</div>
-      <h1 class="auth-title">School OS</h1>
-      <p class="auth-subtitle">سجل الدخول للوصول إلى لوحة التحكم</p>
-
-      <div class="auth-error" id="login-error"></div>
-
-      <form id="login-form">
-        <div class="field">
-          <label for="email">البريد الإلكتروني</label>
-          <input type="email" id="email" name="email" required autocomplete="email" />
-        </div>
-        <div class="field">
-          <label for="password">كلمة المرور</label>
-          <input type="password" id="password" name="password" required autocomplete="current-password" />
-        </div>
-        <button type="submit" class="btn btn-primary" id="login-submit" style="width:100%;">تسجيل الدخول</button>
-      </form>
-
-      <p class="text-muted" style="text-align:center; font-size:13px; margin-top:18px;">
-        معلم جديد ولديك كود تفعيل؟ <a href="/activate.html">فعّل حسابك من هنا</a>
-      </p>
-      <p class="text-muted" style="text-align:center; font-size:13px; margin-top:8px;">
-        مدرسة جديدة؟ <a href="/register.html">سجّل مدرستك من هنا</a>
-      </p>
+  <header class="lp-nav">
+    <div class="lp-nav-inner">
+      <div class="lp-brand"><span class="lp-brand-mark">H</span> HAMURA</div>
+      <nav class="lp-nav-links">
+        <a href="/login.html">تسجيل الدخول</a>
+        <a href="/register.html" class="btn btn-primary btn-sm">سجّل مدرستك مجاناً</a>
+      </nav>
     </div>
-  </div>
+  </header>
+
+  <main>
+    <section class="lp-hero">
+      <div class="lp-hero-inner">
+        <h1>نظام إدارة مدرسي واحد يربط الإدارة والمعلمين والطلاب وأولياء الأمور</h1>
+        <p class="lp-hero-sub">
+          الحضور، الدرجات، المالية، والتقارير — كل شي بمكان واحد، بصلاحيات محددة لكل دور،
+          وبدون تعقيد. تبدأ مدرستك مجاناً بفترة تجريبية.
+        </p>
+        <div class="lp-hero-actions">
+          <a href="/register.html" class="btn btn-primary">سجّل مدرستك الآن</a>
+          <a href="/login.html" class="btn btn-ghost">لدي حساب بالفعل</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-section">
+      <h2 class="lp-section-title">كل شي تحتاجه مدرستك، بمكان واحد</h2>
+      <p class="lp-section-sub">مبني فعلياً وشغّال — مو وعود مستقبلية</p>
+      <div class="lp-features-grid">
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">🔑</div>
+          <h3>تفعيل حسابات آمن</h3>
+          <p>كل معلم يحصل على HAMURA ID وكود تفعيل مؤقت تلقائياً — بدون كلمات مرور تُشارك يدوياً.</p>
+        </div>
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">📅</div>
+          <h3>الحضور اليومي</h3>
+          <p>تسجيل حضور سريع لكل شعبة، مع نظرة يومية شاملة للإدارة بفلاتر حسب الصف والتاريخ.</p>
+        </div>
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">📊</div>
+          <h3>تقييمات ودرجات مرنة</h3>
+          <p>أنواع تقييم قابلة للتخصيص بأوزان مختلفة، مع نسب موزونة تلقائية لكل مادة وطالب.</p>
+        </div>
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">💰</div>
+          <h3>المالية والأقساط</h3>
+          <p>تسجيل الأقساط والدفعات، ومتابعة المتبقي لكل طالب بشكل واضح لولي الأمر والإدارة.</p>
+        </div>
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">📈</div>
+          <h3>تقارير حقيقية</h3>
+          <p>ملخص المدرسة، تقارير الحضور، وتقارير الدرجات لكل شعبة — بيانات حقيقية دائماً.</p>
+        </div>
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">👥</div>
+          <h3>لوحة مخصصة لكل دور</h3>
+          <p>الإدارة، المعلم، الطالب، وولي الأمر — كل واحد يشوف بالضبط اللي يخصه، ولا شي أكثر.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-section lp-section-alt">
+      <h2 class="lp-section-title">تبدأ بثلاث خطوات فقط</h2>
+      <div class="lp-steps">
+        <div class="lp-step">
+          <div class="lp-step-num">1</div>
+          <h3>سجّل مدرستك</h3>
+          <p>أنشئ حساب مدير المدرسة بنفسك خلال دقيقة — بدون تدخل يدوي من أحد.</p>
+        </div>
+        <div class="lp-step">
+          <div class="lp-step-num">2</div>
+          <h3>جهّز الهيكل الأكاديمي</h3>
+          <p>أضف الفروع والصفوف والشعب، ثم ادعُ المعلمين — كل معلم يحصل على كود تفعيل تلقائي.</p>
+        </div>
+        <div class="lp-step">
+          <div class="lp-step-num">3</div>
+          <h3>شغّل مدرستك يومياً</h3>
+          <p>حضور، درجات، مالية، وتقارير — جاهزة للاستخدام الفعلي من أول يوم.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-section">
+      <h2 class="lp-section-title">مصمم لكل من يستخدم المدرسة يومياً</h2>
+      <div class="lp-roles-grid">
+        <div class="lp-role-card">
+          <h3>الإدارة</h3>
+          <p>نظرة كاملة على المدرسة: طلاب، معلمين، حضور، مالية، وتقارير — مع صلاحيات فروع منفصلة عند الحاجة.</p>
+        </div>
+        <div class="lp-role-card">
+          <h3>المعلم</h3>
+          <p>يسجّل حضور وتقييمات فقط لموادّه وشعبه المسندة له — ولا يرى بيانات خارج نطاقه.</p>
+        </div>
+        <div class="lp-role-card">
+          <h3>الطالب</h3>
+          <p>يشوف حضوره ودرجاته بنفسه، بواجهة بسيطة وواضحة، بدون أي بيانات لطلاب آخرين.</p>
+        </div>
+        <div class="lp-role-card">
+          <h3>ولي الأمر</h3>
+          <p>متابعة حضور ودرجات ورصيد أبنائه المرتبطين فقط — بخصوصية كاملة عن باقي الطلاب.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-cta">
+      <h2>جاهز تبدأ؟</h2>
+      <p>سجّل مدرستك الآن وابدأ فترة تجريبية — بدون الحاجة لبطاقة دفع.</p>
+      <a href="/register.html" class="btn btn-primary">سجّل مدرستك مجاناً</a>
+    </section>
+  </main>
+
+  <footer class="lp-footer">
+    <div class="lp-footer-inner">
+      <div class="lp-brand"><span class="lp-brand-mark">H</span> HAMURA</div>
+      <nav class="lp-footer-links">
+        <a href="/login.html">تسجيل الدخول</a>
+        <a href="/register.html">تسجيل مدرسة جديدة</a>
+        <a href="/activate.html">تفعيل حساب معلم</a>
+      </nav>
+      <p class="text-subtle" style="font-size:12px;">© HAMURA</p>
+    </div>
+  </footer>
 
   <script type="module">
-    import { login, homeForRole, getMyProfile } from "/js/lib/auth.js";
-
-    const form = document.getElementById("login-form");
-    const errorBox = document.getElementById("login-error");
-    const submitBtn = document.getElementById("login-submit");
-
-    // Already logged in? skip the form.
+    import { getMyProfile, homeForRole } from "/js/lib/auth.js";
+    // Already logged in? skip straight to the dashboard instead of the pitch.
     getMyProfile().then((profile) => {
       if (profile) window.location.href = homeForRole(profile.role);
-    });
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      errorBox.classList.remove("is-visible");
-      submitBtn.disabled = true;
-      submitBtn.textContent = "جارِ الدخول...";
-
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
-
-      try {
-        const { profile } = await login(email, password);
-        window.location.href = homeForRole(profile.role);
-      } catch (err) {
-        errorBox.textContent = err.message || "تعذر تسجيل الدخول";
-        errorBox.classList.add("is-visible");
-        submitBtn.disabled = false;
-        submitBtn.textContent = "تسجيل الدخول";
-      }
     });
   </script>
 </body>

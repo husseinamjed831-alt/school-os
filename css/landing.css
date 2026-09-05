@@ -1,0 +1,166 @@
+/* ============================================================
+   HAMURA — public landing page only (index.html). Scoped with an
+   "lp-" prefix so nothing here ever collides with the dashboard's
+   components.css classes.
+   ============================================================ */
+
+body { background: var(--surface); }
+
+/* ---------- Nav ---------- */
+.lp-nav {
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 10;
+}
+.lp-nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.lp-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 18px;
+}
+.lp-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: #fff;
+  font-weight: 800;
+}
+.lp-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.lp-nav-links a:not(.btn) { color: var(--text); font-weight: 600; }
+.lp-nav-links a:not(.btn):hover { color: var(--primary); text-decoration: none; }
+
+/* ---------- Hero ---------- */
+.lp-hero {
+  background: linear-gradient(180deg, var(--primary-light) 0%, var(--surface) 100%);
+  padding: 80px 24px 64px;
+  text-align: center;
+}
+.lp-hero-inner { max-width: 780px; margin: 0 auto; }
+.lp-hero h1 { font-size: 38px; line-height: 1.35; margin-bottom: 18px; }
+.lp-hero-sub { font-size: 17px; color: var(--text-muted); margin-bottom: 32px; }
+.lp-hero-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.lp-hero-actions .btn { padding: 13px 28px; font-size: 15px; }
+
+/* ---------- Generic sections ---------- */
+.lp-section { max-width: 1200px; margin: 0 auto; padding: 72px 24px; text-align: center; }
+.lp-section-alt { background: var(--bg); max-width: none; }
+.lp-section-alt > * { max-width: 1200px; margin-left: auto; margin-right: auto; }
+.lp-section-title { font-size: 26px; margin-bottom: 8px; }
+.lp-section-sub { color: var(--text-muted); margin-bottom: 40px; }
+
+/* ---------- Feature cards ---------- */
+.lp-features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  text-align: right;
+}
+.lp-feature-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition), transform var(--transition);
+}
+.lp-feature-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.lp-feature-icon { font-size: 30px; margin-bottom: 14px; }
+.lp-feature-card h3 { font-size: 16px; margin-bottom: 8px; }
+.lp-feature-card p { color: var(--text-muted); font-size: 14px; margin: 0; }
+
+/* ---------- Steps ---------- */
+.lp-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  padding: 0 24px;
+}
+.lp-step { text-align: center; }
+.lp-step-num {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+.lp-step h3 { font-size: 16px; margin-bottom: 6px; }
+.lp-step p { color: var(--text-muted); font-size: 14px; margin: 0; }
+
+/* ---------- Role cards ---------- */
+.lp-roles-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  text-align: right;
+}
+.lp-role-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+}
+.lp-role-card h3 { font-size: 15px; margin-bottom: 8px; color: var(--primary-hover); }
+.lp-role-card p { color: var(--text-muted); font-size: 13px; margin: 0; }
+
+/* ---------- Final CTA ---------- */
+.lp-cta {
+  background: var(--sidebar-bg);
+  color: #fff;
+  text-align: center;
+  padding: 64px 24px;
+}
+.lp-cta h2 { color: #fff; margin-bottom: 8px; }
+.lp-cta p { color: var(--text-on-dark); margin-bottom: 28px; }
+.lp-cta .btn-primary { padding: 13px 28px; font-size: 15px; }
+
+/* ---------- Footer ---------- */
+.lp-footer { border-top: 1px solid var(--border); padding: 32px 24px; }
+.lp-footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.lp-footer-links { display: flex; gap: 20px; }
+.lp-footer-links a { color: var(--text-muted); font-size: 13px; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 900px) {
+  .lp-hero h1 { font-size: 28px; }
+  .lp-features-grid { grid-template-columns: repeat(2, 1fr); }
+  .lp-steps { grid-template-columns: 1fr; }
+  .lp-roles-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .lp-features-grid { grid-template-columns: 1fr; }
+  .lp-roles-grid { grid-template-columns: 1fr; }
+  .lp-nav-links { gap: 10px; }
+  .lp-hero { padding: 56px 20px 48px; }
+}

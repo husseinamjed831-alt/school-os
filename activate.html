@@ -39,7 +39,7 @@
       </form>
 
       <p class="text-muted" style="text-align:center; font-size:13px; margin-top:18px;">
-        فعّلت حسابك من قبل؟ <a href="/index.html">تسجيل الدخول</a>
+        فعّلت حسابك من قبل؟ <a href="/login.html">تسجيل الدخول</a>
       </p>
     </div>
   </div>
@@ -82,7 +82,7 @@
         form.style.display = "none";
         successBox.textContent = "تم تفعيل الحساب بنجاح. يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.";
         successBox.style.display = "block";
-        setTimeout(() => (window.location.href = "/index.html"), 2500);
+        setTimeout(() => (window.location.href = "/login.html"), 2500);
       } catch (err) {
         errorBox.textContent = toArabicError(err.message || "تعذر تفعيل الحساب");
         errorBox.classList.add("is-visible");

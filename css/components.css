@@ -372,6 +372,44 @@
 .id-chip-label { font-size: 12px; color: var(--text-muted); margin-bottom: 2px; }
 .id-chip-value { font-size: 14px; font-weight: 700; color: var(--text); }
 
+/* ---------- Student cards grid ---------- */
+.student-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.student-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--primary);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition), transform var(--transition);
+  animation: fade-in-up 0.4s ease both;
+}
+.student-card:hover { box-shadow: var(--shadow-md); transform: translateY(-3px); }
+.student-card:nth-child(5n+1) { border-top-color: var(--primary); }
+.student-card:nth-child(5n+2) { border-top-color: var(--success); }
+.student-card:nth-child(5n+3) { border-top-color: var(--info); }
+.student-card:nth-child(5n+4) { border-top-color: var(--warning); }
+.student-card:nth-child(5n+5) { border-top-color: var(--danger); }
+.student-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.student-card-avatar { width: 44px; height: 44px; font-size: 15px; }
+.student-card-name { font-size: 15px; margin-bottom: 4px; }
+.student-card-meta { font-size: 13px; color: var(--text-muted); margin: 0 0 2px; }
+.student-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+@media (prefers-reduced-motion: reduce) {
+  .student-card { animation: none !important; }
+}
+
 /* ---------- Tabs ---------- */
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
 .tab-btn {

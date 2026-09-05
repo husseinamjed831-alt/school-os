@@ -17,6 +17,8 @@
     import { listStudents, bulkCreateStudents } from "/js/api/students.js";
     import { guard, showToast, escapeHtml, parseCsv } from "/js/lib/utils.js";
     import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+    import * as pdfjsLib from "https://esm.sh/pdfjs-dist@4.0.379/build/pdf.mjs";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://esm.sh/pdfjs-dist@4.0.379/build/pdf.worker.mjs";
 
     const profile = await requireRole(["school_admin", "branch_admin"]);
     const content = mountShell(profile, "students");
@@ -31,16 +33,18 @@
 
     content.innerHTML = `
       <a href="/admin/students.html" class="text-muted" style="display:inline-block; margin-bottom:16px;">← رجوع لقائمة الطلاب</a>
-      <h1>استيراد الطلاب من CSV أو Excel</h1>
+      <h1>استيراد الطلاب من CSV أو Excel أو PDF</h1>
       <p class="text-muted" style="margin-bottom:20px;">
         الأعمدة المتوقعة: <strong>full_name</strong> (أو "الاسم" — مطلوب)، birth_date (اختياري، بصيغة YYYY-MM-DD)،
         class_name وsection_name (اختياري — لتعيين الصف والشعبة تلقائياً). لا تحتاج إدخال أي HAMURA ID أو كود تفعيل —
-        هذه فقط لبيانات الطلاب أنفسهم، وليست حسابات دخول. ملفات PDF/Word غير مدعومة — بيانات غير منظمة، والاستخراج منها غير موثوق.
+        هذه فقط لبيانات الطلاب أنفسهم، وليست حسابات دخول.
+        <strong>ملفات PDF مدعومة فقط إذا كانت نصية</strong> (مُصدَّرة من برنامج مثل Excel/Word، وليست صورة ممسوحة ضوئياً) —
+        الاستخراج من ملف ممسوح أو محمي غير موثوق ولن يُعرض كأنه نجح. ملفات Word غير مدعومة.
       </p>
       <div class="card" style="margin-bottom:20px;">
         <div class="field" style="margin-bottom:0;">
-          <label for="csv-file">اختر ملف CSV أو Excel (xlsx)</label>
-          <input type="file" id="csv-file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+          <label for="csv-file">اختر ملف CSV أو Excel (xlsx) أو PDF</label>
+          <input type="file" id="csv-file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf" />
         </div>
       </div>
       <div id="import-wrap"></div>
@@ -64,6 +68,58 @@
       return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(value).getTime());
     }
 
+    /**
+     * Best-effort table reconstruction from a text-based PDF: groups text
+     * items into lines by y-position, then splits each line into cells at
+     * any horizontal gap wide enough to be a column break rather than a
+     * space within one cell. Returns null (not [], to distinguish "found
+     * nothing" from "found an empty table") when the PDF has essentially
+     * no extractable text at all — i.e. it's a scanned image, not text.
+     */
+    async function parsePdfToTable(file) {
+      const buffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+      const rows = [];
+      let totalChars = 0;
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const content = await page.getTextContent();
+        totalChars += content.items.reduce((sum, item) => sum + item.str.length, 0);
+
+        const lines = new Map(); // rounded-y -> items, to group same-line text
+        for (const item of content.items) {
+          if (!item.str.trim()) continue;
+          const y = Math.round(item.transform[5] / 3) * 3; // ~3pt tolerance
+          if (!lines.has(y)) lines.set(y, []);
+          lines.get(y).push({ x: item.transform[4], text: item.str });
+        }
+
+        const sortedLineYs = [...lines.keys()].sort((a, b) => b - a); // top to bottom
+        for (const y of sortedLineYs) {
+          const items = lines.get(y).sort((a, b) => a.x - b.x);
+          const cells = [];
+          let current = items[0].text;
+          let lastEnd = items[0].x + items[0].text.length * 5; // rough glyph width
+          for (let i = 1; i < items.length; i++) {
+            const gap = items[i].x - lastEnd;
+            if (gap > 12) {
+              cells.push(current.trim());
+              current = items[i].text;
+            } else {
+              current += items[i].text;
+            }
+            lastEnd = items[i].x + items[i].text.length * 5;
+          }
+          cells.push(current.trim());
+          if (cells.some((c) => c)) rows.push(cells);
+        }
+      }
+
+      if (totalChars < 5) return null; // essentially no text -> scanned/image PDF
+      return rows;
+    }
+
     let parsedRows = [];
 
     document.getElementById("csv-file").addEventListener("change", async (e) => {
@@ -74,8 +130,16 @@
         return;
       }
       const isExcel = /\.xlsx?$/i.test(file.name);
+      const isPdf = /\.pdf$/i.test(file.name);
       let table;
-      if (isExcel) {
+      if (isPdf) {
+        wrap.innerHTML = `<p class="text-muted">جارِ استخراج النص من ملف PDF...</p>`;
+        table = await guard(() => parsePdfToTable(file), "تعذر قراءة ملف PDF");
+        if (table === null) {
+          wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">لا يمكن استخراج بيانات موثوقة من هذا الملف</div><p>الملف يبدو صورة ممسوحة ضوئياً أو محمي، وليس نصاً حقيقياً — جرّب تصدير الملف كـCSV أو Excel بدلاً من ذلك</p></div>`;
+          return;
+        }
+      } else if (isExcel) {
         const buffer = await file.arrayBuffer();
         const workbook = XLSX.read(buffer, { type: "array" });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -84,7 +148,7 @@
         const text = await file.text();
         table = parseCsv(text);
       }
-      if (table.length < 2) {
+      if (!table || table.length < 2) {
         wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">الملف فارغ أو بدون بيانات</div></div>`;
         return;
       }

@@ -141,28 +141,26 @@
       }
 
       wrap.innerHTML = `
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>الاسم</th><th>الصف والشعبة</th><th>ولي الأمر</th><th>الحالة</th><th></th></tr></thead>
-            <tbody>
-              ${students
-                .map(
-                  (s) => `
-                <tr>
-                  <td>${escapeHtml(s.full_name)}</td>
-                  <td>${s.sections ? `${escapeHtml(s.sections.classes?.name ?? "")} - ${escapeHtml(s.sections.name)}` : "—"}</td>
-                  <td>${s.parent ? escapeHtml(s.parent.full_name) : "—"}</td>
-                  <td><span class="badge ${s.is_active ? "badge-success" : "badge-neutral"}">${s.is_active ? "نشط" : "معطل"}</span></td>
-                  <td class="flex gap-8">
-                    <a class="btn btn-ghost btn-sm" href="/admin/student-profile.html?id=${s.id}">الملف الكامل</a>
-                    <button class="btn btn-ghost btn-sm" data-edit="${s.id}">تعديل</button>
-                    ${s.is_active ? `<button class="btn btn-danger btn-sm" data-deactivate="${s.id}">إلغاء تفعيل</button>` : ""}
-                  </td>
-                </tr>`
-                )
-                .join("")}
-            </tbody>
-          </table>
+        <div class="student-cards-grid">
+          ${students
+            .map(
+              (s, i) => `
+            <div class="student-card" style="animation-delay:${Math.min(i * 0.04, 0.4)}s;">
+              <div class="student-card-top">
+                <div class="avatar student-card-avatar">${initials(s.full_name)}</div>
+                <span class="badge ${s.is_active ? "badge-success" : "badge-neutral"}">${s.is_active ? "نشط" : "معطل"}</span>
+              </div>
+              <h3 class="student-card-name">${escapeHtml(s.full_name)}</h3>
+              <p class="student-card-meta">${s.sections ? `${escapeHtml(s.sections.classes?.name ?? "")} - ${escapeHtml(s.sections.name)}` : "لم يُحدَّد الصف"}</p>
+              <p class="student-card-meta text-subtle">ولي الأمر: ${s.parent ? escapeHtml(s.parent.full_name) : "غير مسجّل"}</p>
+              <div class="student-card-actions">
+                <a class="btn btn-ghost btn-sm" href="/admin/student-profile.html?id=${s.id}">الملف الكامل</a>
+                <button class="btn btn-ghost btn-sm" data-edit="${s.id}">تعديل</button>
+                ${s.is_active ? `<button class="btn btn-danger btn-sm" data-deactivate="${s.id}">إلغاء تفعيل</button>` : ""}
+              </div>
+            </div>`
+            )
+            .join("")}
         </div>
       `;
 
@@ -179,6 +177,11 @@
           }
         })
       );
+    }
+
+    function initials(name) {
+      if (!name) return "؟";
+      return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("");
     }
 
     document.getElementById("search-input").addEventListener("input", debounce(renderTable, 300));

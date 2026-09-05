@@ -16,6 +16,7 @@
     import { listSections } from "/js/api/sections.js";
     import { listStudents, bulkCreateStudents } from "/js/api/students.js";
     import { guard, showToast, escapeHtml, parseCsv } from "/js/lib/utils.js";
+    import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
     const profile = await requireRole(["school_admin", "branch_admin"]);
     const content = mountShell(profile, "students");
@@ -30,16 +31,16 @@
 
     content.innerHTML = `
       <a href="/admin/students.html" class="text-muted" style="display:inline-block; margin-bottom:16px;">← رجوع لقائمة الطلاب</a>
-      <h1>استيراد الطلاب من ملف CSV</h1>
+      <h1>استيراد الطلاب من CSV أو Excel</h1>
       <p class="text-muted" style="margin-bottom:20px;">
         الأعمدة المتوقعة: <strong>full_name</strong> (أو "الاسم" — مطلوب)، birth_date (اختياري، بصيغة YYYY-MM-DD)،
         class_name وsection_name (اختياري — لتعيين الصف والشعبة تلقائياً). لا تحتاج إدخال أي HAMURA ID أو كود تفعيل —
-        هذه فقط لبيانات الطلاب أنفسهم، وليست حسابات دخول.
+        هذه فقط لبيانات الطلاب أنفسهم، وليست حسابات دخول. ملفات PDF/Word غير مدعومة — بيانات غير منظمة، والاستخراج منها غير موثوق.
       </p>
       <div class="card" style="margin-bottom:20px;">
         <div class="field" style="margin-bottom:0;">
-          <label for="csv-file">اختر ملف CSV</label>
-          <input type="file" id="csv-file" accept=".csv,text/csv" />
+          <label for="csv-file">اختر ملف CSV أو Excel (xlsx)</label>
+          <input type="file" id="csv-file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
         </div>
       </div>
       <div id="import-wrap"></div>
@@ -72,8 +73,17 @@
         wrap.innerHTML = "";
         return;
       }
-      const text = await file.text();
-      const table = parseCsv(text);
+      const isExcel = /\.xlsx?$/i.test(file.name);
+      let table;
+      if (isExcel) {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        table = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "", raw: false }).map((row) => row.map((cell) => String(cell ?? "").trim()));
+      } else {
+        const text = await file.text();
+        table = parseCsv(text);
+      }
       if (table.length < 2) {
         wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">الملف فارغ أو بدون بيانات</div></div>`;
         return;

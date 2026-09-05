@@ -4,7 +4,19 @@
    components.css classes.
    ============================================================ */
 
-body { background: var(--surface); }
+body { background: var(--surface); overflow-x: hidden; }
+
+@keyframes lp-fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes lp-glow-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(3%, -4%) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-hero-inner, .lp-feature-card, .lp-step, .lp-role-card, .lp-hero::before { animation: none !important; }
+}
 
 /* ---------- Nav ---------- */
 .lp-nav {
@@ -50,15 +62,50 @@ body { background: var(--surface); }
 
 /* ---------- Hero ---------- */
 .lp-hero {
+  position: relative;
+  overflow: hidden;
   background: linear-gradient(180deg, var(--primary-light) 0%, var(--surface) 100%);
   padding: 80px 24px 64px;
   text-align: center;
 }
-.lp-hero-inner { max-width: 780px; margin: 0 auto; }
-.lp-hero h1 { font-size: 38px; line-height: 1.35; margin-bottom: 18px; }
+.lp-hero::before,
+.lp-hero::after {
+  content: "";
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.35;
+  z-index: 0;
+  animation: lp-glow-drift 12s ease-in-out infinite;
+}
+.lp-hero::before { background: var(--primary); top: -180px; left: -120px; }
+.lp-hero::after { background: var(--info); top: -140px; right: -140px; animation-delay: -6s; }
+.lp-hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 780px;
+  margin: 0 auto;
+  animation: lp-fade-up 0.7s ease both;
+}
+.lp-hero h1 {
+  font-size: 38px;
+  line-height: 1.35;
+  margin-bottom: 18px;
+  background: linear-gradient(90deg, var(--text) 30%, var(--primary));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
 .lp-hero-sub { font-size: 17px; color: var(--text-muted); margin-bottom: 32px; }
 .lp-hero-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .lp-hero-actions .btn { padding: 13px 28px; font-size: 15px; }
+.lp-hero-actions .btn-primary {
+  box-shadow: 0 8px 24px rgba(29, 78, 216, 0.35);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.lp-hero-actions .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(29, 78, 216, 0.45); }
 
 /* ---------- Generic sections ---------- */
 .lp-section { max-width: 1200px; margin: 0 auto; padding: 72px 24px; text-align: center; }
@@ -81,9 +128,31 @@ body { background: var(--surface); }
   padding: 28px;
   box-shadow: var(--shadow-sm);
   transition: box-shadow var(--transition), transform var(--transition);
+  animation: lp-fade-up 0.6s ease both;
 }
-.lp-feature-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
-.lp-feature-icon { font-size: 30px; margin-bottom: 14px; }
+.lp-feature-card:nth-child(1) { animation-delay: 0.05s; }
+.lp-feature-card:nth-child(2) { animation-delay: 0.12s; }
+.lp-feature-card:nth-child(3) { animation-delay: 0.19s; }
+.lp-feature-card:nth-child(4) { animation-delay: 0.26s; }
+.lp-feature-card:nth-child(5) { animation-delay: 0.33s; }
+.lp-feature-card:nth-child(6) { animation-delay: 0.4s; }
+.lp-feature-card:hover { box-shadow: var(--shadow-md); transform: translateY(-4px); }
+.lp-feature-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+.lp-feature-card:nth-child(6n+1) .lp-feature-icon { background: var(--primary-light); }
+.lp-feature-card:nth-child(6n+2) .lp-feature-icon { background: var(--success-light); }
+.lp-feature-card:nth-child(6n+3) .lp-feature-icon { background: var(--info-light); }
+.lp-feature-card:nth-child(6n+4) .lp-feature-icon { background: var(--warning-light); }
+.lp-feature-card:nth-child(6n+5) .lp-feature-icon { background: var(--danger-light); }
+.lp-feature-card:nth-child(6n+6) .lp-feature-icon { background: var(--primary-light); }
 .lp-feature-card h3 { font-size: 16px; margin-bottom: 8px; }
 .lp-feature-card p { color: var(--text-muted); font-size: 14px; margin: 0; }
 
@@ -94,12 +163,14 @@ body { background: var(--surface); }
   gap: 32px;
   padding: 0 24px;
 }
-.lp-step { text-align: center; }
+.lp-step { text-align: center; animation: lp-fade-up 0.6s ease both; }
+.lp-step:nth-child(1) { animation-delay: 0.05s; }
+.lp-step:nth-child(2) { animation-delay: 0.2s; }
+.lp-step:nth-child(3) { animation-delay: 0.35s; }
 .lp-step-num {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: var(--primary);
   color: #fff;
   font-weight: 800;
   font-size: 18px;
@@ -107,7 +178,11 @@ body { background: var(--surface); }
   align-items: center;
   justify-content: center;
   margin: 0 auto 16px;
+  box-shadow: var(--shadow-md);
 }
+.lp-step:nth-child(1) .lp-step-num { background: var(--primary); }
+.lp-step:nth-child(2) .lp-step-num { background: var(--info); }
+.lp-step:nth-child(3) .lp-step-num { background: var(--success); }
 .lp-step h3 { font-size: 16px; margin-bottom: 6px; }
 .lp-step p { color: var(--text-muted); font-size: 14px; margin: 0; }
 
@@ -120,15 +195,23 @@ body { background: var(--surface); }
 }
 .lp-role-card {
   border: 1px solid var(--border);
+  border-top: 3px solid var(--primary);
   border-radius: var(--radius-lg);
   padding: 22px;
+  animation: lp-fade-up 0.6s ease both;
+  transition: transform var(--transition-fast);
 }
+.lp-role-card:hover { transform: translateY(-3px); }
+.lp-role-card:nth-child(1) { animation-delay: 0.05s; border-top-color: var(--primary); }
+.lp-role-card:nth-child(2) { animation-delay: 0.15s; border-top-color: var(--info); }
+.lp-role-card:nth-child(3) { animation-delay: 0.25s; border-top-color: var(--success); }
+.lp-role-card:nth-child(4) { animation-delay: 0.35s; border-top-color: var(--warning); }
 .lp-role-card h3 { font-size: 15px; margin-bottom: 8px; color: var(--primary-hover); }
 .lp-role-card p { color: var(--text-muted); font-size: 13px; margin: 0; }
 
 /* ---------- Final CTA ---------- */
 .lp-cta {
-  background: var(--sidebar-bg);
+  background: linear-gradient(120deg, var(--sidebar-bg) 0%, var(--primary-hover) 100%);
   color: #fff;
   text-align: center;
   padding: 64px 24px;

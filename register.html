@@ -27,12 +27,8 @@
           <input type="text" id="owner-name" required />
         </div>
         <div class="field">
-          <label for="owner-phone">رقم الهاتف (اختياري)</label>
-          <input type="text" id="owner-phone" />
-        </div>
-        <div class="field">
-          <label for="owner-email">البريد الإلكتروني</label>
-          <input type="email" id="owner-email" required autocomplete="email" />
+          <label for="owner-phone">رقم الهاتف</label>
+          <input type="tel" id="owner-phone" required autocomplete="tel" placeholder="07xxxxxxxxx" />
         </div>
         <div class="field">
           <label for="owner-password">كلمة المرور</label>
@@ -49,7 +45,7 @@
 
   <script type="module">
     import { supabase } from "/js/lib/supabase-client.js";
-    import { login, homeForRole } from "/js/lib/auth.js";
+    import { loginWithIdentifier, homeForRole } from "/js/lib/auth.js";
     import { toArabicError } from "/js/lib/utils.js";
 
     const form = document.getElementById("register-form");
@@ -62,7 +58,7 @@
       submitBtn.disabled = true;
       submitBtn.textContent = "جارِ الإنشاء...";
 
-      const email = document.getElementById("owner-email").value.trim();
+      const phone = document.getElementById("owner-phone").value.trim();
       const password = document.getElementById("owner-password").value;
 
       try {
@@ -70,15 +66,14 @@
           body: {
             school_name: document.getElementById("school-name").value.trim(),
             owner_full_name: document.getElementById("owner-name").value.trim(),
-            owner_phone: document.getElementById("owner-phone").value.trim() || undefined,
-            owner_email: email,
+            owner_phone: phone,
             owner_password: password,
           },
         });
         if (error) throw error;
         if (data?.error) throw new Error(data.error);
 
-        const { profile } = await login(email, password);
+        const { profile } = await loginWithIdentifier(phone, password);
         window.location.href = homeForRole(profile.role);
       } catch (err) {
         errorBox.textContent = toArabicError(err.message || "تعذر إنشاء المدرسة");

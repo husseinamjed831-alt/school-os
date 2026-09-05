@@ -13,6 +13,14 @@
 // flow, unlike teacher accounts, because the owner is present and typing
 // it themselves at signup time.
 //
+// Phone-first signup: the form only asks for a phone number, never an
+// email. Supabase Auth's account record still needs *some* email under
+// the hood, so one is synthesized deterministically from the phone number
+// (never shown to the user, never used to send mail) — the owner logs
+// back in with their phone number via login-with-identifier exactly like
+// any other phone-registered account. Passing a real owner_email still
+// works too (kept for flexibility), it just isn't what the form sends.
+//
 // Deploy: supabase functions deploy register-school --no-verify-jwt
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -29,6 +37,12 @@ function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return base.length >= 3 ? base : "school";
+}
+
+// Matches login-with-identifier's normalizePhone so the same number always
+// maps to the same synthetic email, whether it has spaces/dashes or not.
+function normalizePhone(value: string): string {
+  return value.replace(/[\s-]/g, "").replace(/^\+?00?/, "");
 }
 
 Deno.serve(async (req: Request) => {
@@ -61,12 +75,17 @@ Deno.serve(async (req: Request) => {
     }
 
     const { school_name, owner_full_name, owner_email, owner_password, owner_phone } = body;
-    if (!school_name || !owner_full_name || !owner_email || !owner_password) {
+    if (!school_name || !owner_full_name || !owner_password || (!owner_phone && !owner_email)) {
       return jsonResponse({ error: "الرجاء تعبئة كل الحقول المطلوبة" }, 400);
     }
     if (owner_password.length < 8) {
       return jsonResponse({ error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل" }, 400);
     }
+
+    // No real email given (the normal path, from the signup form) -> the
+    // phone number itself becomes the account's real identity, backed by a
+    // synthetic, never-emailed address purely so auth.users has one.
+    const authEmail = owner_email ?? `p${normalizePhone(owner_phone!)}@accounts.hamura.internal`;
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
 
@@ -88,13 +107,23 @@ Deno.serve(async (req: Request) => {
     }
 
     const { data: created, error: createError } = await admin.auth.admin.createUser({
-      email: owner_email,
+      email: authEmail,
       password: owner_password,
       email_confirm: true,
     });
     if (createError || !created?.user) {
       await admin.from("schools").delete().eq("id", school.id);
-      return jsonResponse({ error: `تعذر إنشاء الحساب: ${createError?.message ?? "خطأ غير معروف"}` }, 400);
+      const alreadyExists = createError?.message?.toLowerCase().includes("already");
+      return jsonResponse(
+        {
+          error: alreadyExists
+            ? owner_email
+              ? "هذا البريد الإلكتروني مستخدم بالفعل"
+              : "رقم الهاتف هذا مستخدم بالفعل لحساب آخر"
+            : `تعذر إنشاء الحساب: ${createError?.message ?? "خطأ غير معروف"}`,
+        },
+        400
+      );
     }
 
     const { error: profileError } = await admin.from("profiles").insert({

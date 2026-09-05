@@ -7,7 +7,7 @@ without guessing. Update it on every future release — don't let it go stale.
 ## This release
 
 - **Git tag:** `v1.0.0`
-- **Git commit:** `d35ca40`
+- **Git commit:** `0798a4b` (tag `v1.0.0` points here; the code itself landed in `d35ca40`, this commit only adds this file)
 - **Branch:** `master` (local) — the GitHub remote does not auto-deploy
   anything; Cloudflare Pages is a separate, manual `wrangler pages deploy`.
 

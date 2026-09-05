@@ -26,7 +26,7 @@ body { background: var(--surface); overflow-x: hidden; }
 
 /* ---------- Top announcement banner ---------- */
 .lp-topbanner {
-  background: linear-gradient(90deg, var(--primary), var(--info));
+  background: linear-gradient(90deg, var(--primary), var(--accent-pink));
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -112,7 +112,7 @@ body { background: var(--surface); overflow-x: hidden; }
   animation: lp-glow-drift 12s ease-in-out infinite;
 }
 .lp-hero::before { background: var(--primary); top: -180px; left: -120px; }
-.lp-hero::after { background: var(--info); top: -140px; right: -140px; animation-delay: -6s; }
+.lp-hero::after { background: var(--accent-pink); top: -140px; right: -140px; animation-delay: -6s; }
 .lp-hero-inner {
   position: relative;
   z-index: 1;
@@ -133,10 +133,10 @@ body { background: var(--surface); overflow-x: hidden; }
 .lp-hero-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .lp-hero-actions .btn { padding: 13px 28px; font-size: 15px; }
 .lp-hero-actions .btn-primary {
-  box-shadow: 0 8px 24px rgba(29, 78, 216, 0.35);
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.35);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
-.lp-hero-actions .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(29, 78, 216, 0.45); }
+.lp-hero-actions .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(124, 58, 237, 0.45); }
 
 /* ---------- Hero v2 (with floating role cards) ---------- */
 .lp-hero-v2 {
@@ -163,7 +163,7 @@ body { background: var(--surface); overflow-x: hidden; }
 }
 .lp-hero-v2-headline { font-size: 42px; line-height: 1.35; margin-bottom: 16px; }
 .lp-gradient-text {
-  background: linear-gradient(90deg, var(--primary), var(--info));
+  background: linear-gradient(90deg, var(--primary), var(--accent-pink));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -328,7 +328,7 @@ body { background: var(--surface); overflow-x: hidden; }
 
 /* ---------- Final CTA ---------- */
 .lp-cta {
-  background: linear-gradient(120deg, var(--sidebar-bg) 0%, var(--primary-hover) 100%);
+  background: linear-gradient(120deg, var(--sidebar-bg) 0%, var(--primary-hover) 60%, var(--accent-pink) 100%);
   color: #fff;
   text-align: center;
   padding: 64px 24px;

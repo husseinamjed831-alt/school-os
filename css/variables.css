@@ -1,8 +1,9 @@
 :root {
   /* Brand */
-  --primary: #1D4ED8;
-  --primary-hover: #1E40AF;
-  --primary-light: #EFF6FF;
+  --primary: #7C3AED;
+  --primary-hover: #6D28D9;
+  --primary-light: #F5F3FF;
+  --accent-pink: #EC4899;
 
   /* Semantic */
   --success: #16A34A;
@@ -32,7 +33,7 @@
   --sidebar-bg-hover: #1E293B;
   --sidebar-text: #94A3B8;
   --sidebar-text-active: #FFFFFF;
-  --sidebar-active-bg: #1D4ED8;
+  --sidebar-active-bg: #7C3AED;
 
   /* Shape */
   --radius-sm: 8px;

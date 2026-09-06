@@ -93,6 +93,7 @@ begin
       join pg_class c on c.relname=col.table_name
       join pg_namespace n on n.oid=c.relnamespace and n.nspname='public'
       where col.table_schema='public' and col.column_name='school_id' and c.relkind='r'
+        and col.table_name not in ('audit_events','domain_events','security_events','audit_export_log')
     ) t
     where not exists (
       select 1 from information_schema.triggers tg

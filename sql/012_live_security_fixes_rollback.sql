@@ -22,11 +22,12 @@ end;
 $$;
 drop function if exists public.enforce_row_tenant();
 
--- 2. self-escalation guard + restore column grants
+-- 2. self-escalation guard.
+-- NOTE: 012's `revoke update (cols)` was a no-op (Supabase grants
+-- table-level UPDATE), so there is nothing to re-grant here. The real
+-- column restriction is 012b — roll that back separately and FIRST.
 drop trigger if exists trg_prevent_profile_self_escalation on public.profiles;
 drop function if exists public.prevent_profile_self_escalation();
-grant update (role, school_id, branch_id, activation_status, hamura_id)
-  on public.profiles to authenticated;
 
 -- 1. helper
 drop function if exists public.normalize_phone(text);

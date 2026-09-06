@@ -84,13 +84,10 @@ create trigger trg_prevent_profile_self_escalation
   before update on public.profiles
   for each row execute function public.prevent_profile_self_escalation();
 
--- Defence in depth: authenticated clients have no business updating these
--- columns at all (role/tenant moves belong to the create-user Edge Function
--- now, and to the assign_role RPC in Phase 2). full_name / phone / is_active
--- stay updatable (RLS still decides WHICH rows; the trigger above stops
--- self is_active/role changes). service_role bypasses column privileges.
-revoke update (role, school_id, branch_id, activation_status, hamura_id)
-  on public.profiles from authenticated;
+-- Column-level restriction of the sensitive profiles columns is done in
+-- 012b (a column REVOKE here is a no-op because Supabase grants
+-- table-level UPDATE to authenticated — see 012b header). The trigger
+-- above is the in-transaction guard; 012b is the privilege guard.
 
 
 -- ------------------------------------------------------------

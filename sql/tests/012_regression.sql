@@ -95,12 +95,18 @@ select
      where phone is not null and public.normalize_phone(phone) <> ''
      group by school_id, public.normalize_phone(phone) having count(*) > 1) b) as in_school_dupe_phones;
 
--- ---- T-5  smoke: normalize_phone parity with the JS impl ---
+-- ---- T-5  smoke: normalize_phone parity with the JS impl -----------
+--   JS: value.replace(/[\s-]/g,"").replace(/^\+?00?/,"")
+--   NOTE: a lone leading '+' is NOT stripped (the regex needs a '0'
+--   after the optional '+'), so '+9647...' keeps its '+'. This is a
+--   pre-existing quirk: a user who stored '+964...' will not match one
+--   who stored '0...' — same-format login is required within a school.
 do $$
 begin
-  if public.normalize_phone('07730018178') <> '7730018178' then raise exception 'FAIL T-5a'; end if;
-  if public.normalize_phone('077 3001-8178') <> '7730018178' then raise exception 'FAIL T-5b'; end if;
-  if public.normalize_phone('+9647730018178') <> '9647730018178' then raise exception 'FAIL T-5c'; end if;
+  if public.normalize_phone('07730018178')   <> '7730018178'     then raise exception 'FAIL T-5a: %', public.normalize_phone('07730018178'); end if;
+  if public.normalize_phone('077 3001-8178') <> '7730018178'     then raise exception 'FAIL T-5b: %', public.normalize_phone('077 3001-8178'); end if;
+  if public.normalize_phone('+9647730018178')<> '+9647730018178' then raise exception 'FAIL T-5c: %', public.normalize_phone('+9647730018178'); end if;
+  if public.normalize_phone('00964773')      <> '964773'         then raise exception 'FAIL T-5d: %', public.normalize_phone('00964773'); end if;
   raise notice 'PASS T-5: normalize_phone matches the Edge Function normalization';
 end;
 $$;

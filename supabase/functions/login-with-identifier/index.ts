@@ -1,17 +1,23 @@
-// School OS — login-with-identifier Edge Function
+// School OS — login-with-identifier Edge Function  (v2: tenant-qualified)
 //
 // PUBLIC endpoint (no session yet — this IS how a session gets created).
-// Lets a user log in with either their email OR their phone number, using
-// their normal password — no SMS/OTP involved anywhere, so this has zero
-// per-message cost and doesn't need an SMS provider.
+// Log in with EITHER an email OR a phone number + the normal password.
+// No SMS/OTP anywhere.
 //
-// `profiles.phone` has no uniqueness constraint (never did — adding one
-// now could fail against real existing duplicate/blank phone numbers), so
-// this resolves phone -> email server-side and refuses to guess when a
-// phone number matches zero or more than one profile. It never reveals to
-// the caller whether the identifier existed at all: an unknown phone, an
-// ambiguous phone, and a wrong password all return the exact same generic
-// error, exactly like normal email/password login already does.
+// v2 change (HAMURA V1 Phase 1, security review A1):
+//   A phone number is NOT globally unique across tenants. Previously this
+//   scanned every profile in the platform and required "exactly one match",
+//   which (a) was a cross-tenant read and (b) broke phone login for BOTH
+//   users whenever the same number existed in two schools.
+//   Now:
+//     - email identifier            -> unchanged (emails are globally unique)
+//     - phone + `school_code`       -> resolution scoped to that one school
+//     - phone, no `school_code`,
+//       matches users in ONE school -> still works (backwards compatible)
+//     - phone, no `school_code`,
+//       matches >1 school           -> rejected: "provide your school code"
+//   Every failure path returns the SAME generic error (no oracle), except
+//   the explicit "needs school code" disambiguation prompt.
 //
 // Deploy: supabase functions deploy login-with-identifier --no-verify-jwt
 
@@ -24,15 +30,15 @@ const CORS_HEADERS = {
 };
 
 const GENERIC_ERROR = "البريد الإلكتروني/رقم الهاتف أو كلمة المرور غير صحيحة";
+const NEED_SCHOOL_CODE =
+  "رقم الهاتف هذا مستخدم في أكثر من مدرسة — الرجاء إدخال رمز مدرستك";
 
 function looksLikeEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-// Loose match: strips spaces/dashes and an optional leading "+" or "00" so
-// "077 3001 8178", "0773-001-8178", and "+9647730018178" can all still
-// find the same stored "07730018178" without forcing every admin/import to
-// re-normalize existing phone numbers first.
+// Must stay identical to public.normalize_phone() in sql/012 and to
+// register-school's normalizePhone().
 function normalizePhone(value: string): string {
   return value.replace(/[\s-]/g, "").replace(/^\+?00?/, "");
 }
@@ -54,7 +60,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "إعداد الخادم غير مكتمل: متغيرات البيئة مفقودة" }, 500);
     }
 
-    let body: { identifier?: string; password?: string };
+    let body: { identifier?: string; password?: string; school_code?: string };
     try {
       body = await req.json();
     } catch {
@@ -63,6 +69,7 @@ Deno.serve(async (req: Request) => {
 
     const identifier = body.identifier?.trim();
     const password = body.password;
+    const schoolCode = body.school_code?.trim().toLowerCase() || null;
     if (!identifier || !password) {
       return jsonResponse({ error: "الرجاء تعبئة كل الحقول" }, 400);
     }
@@ -75,32 +82,58 @@ Deno.serve(async (req: Request) => {
       const admin = createClient(supabaseUrl, serviceRoleKey);
       const normalized = normalizePhone(identifier);
 
-      const { data: matches } = await admin
-        .from("profiles")
-        .select("id, phone")
-        .not("phone", "is", null);
+      // Resolve the tenant scope first.
+      let scopedSchoolId: string | null = null;
+      if (schoolCode) {
+        const { data: school } = await admin
+          .from("schools")
+          .select("id")
+          .eq("slug", schoolCode)
+          .maybeSingle();
+        if (!school) {
+          // unknown school code -> same generic error (no oracle)
+          return jsonResponse({ error: GENERIC_ERROR }, 400);
+        }
+        scopedSchoolId = school.id;
+      }
 
-      const matched = (matches ?? []).filter((p) => p.phone && normalizePhone(p.phone) === normalized);
-      if (matched.length !== 1) {
-        // Zero matches (unknown number) or more than one (ambiguous,
-        // pre-existing duplicate phone numbers) — same generic error either
-        // way, same as an unknown email would get.
+      // Pull only phone-bearing profiles, scoped to the school when we have one.
+      let q = admin.from("profiles").select("id, phone, school_id").not("phone", "is", null);
+      if (scopedSchoolId) q = q.eq("school_id", scopedSchoolId);
+      const { data: rows } = await q;
+
+      const matched = (rows ?? []).filter(
+        (p) => p.phone && normalizePhone(p.phone) === normalized,
+      );
+
+      if (matched.length === 0) {
+        return jsonResponse({ error: GENERIC_ERROR }, 400);
+      }
+      if (matched.length > 1) {
+        // Ambiguous. If it spans multiple schools, ask for the code;
+        // if it is duplicated inside one school, that is a data defect
+        // and we still refuse generically.
+        const schools = new Set(matched.map((m) => m.school_id));
+        if (!scopedSchoolId && schools.size > 1) {
+          return jsonResponse({ error: NEED_SCHOOL_CODE, need_school_code: true }, 409);
+        }
         return jsonResponse({ error: GENERIC_ERROR }, 400);
       }
 
-      const { data: userData, error: userError } = await admin.auth.admin.getUserById(matched[0].id);
+      const { data: userData, error: userError } = await admin.auth.admin.getUserById(
+        matched[0].id,
+      );
       if (userError || !userData?.user?.email) {
         return jsonResponse({ error: GENERIC_ERROR }, 400);
       }
       email = userData.user.email;
     }
 
-    // The actual password check — a fresh anon-key client, same as the
-    // browser's own supabase.auth.signInWithPassword() would do. This
-    // function only ever resolves *which* email to check, never bypasses
-    // the real password verification.
+    // The real password check — a fresh anon-key client, exactly what the
+    // browser's supabase.auth.signInWithPassword() would do.
     const anonClient = createClient(supabaseUrl, anonKey);
-    const { data: signInData, error: signInError } = await anonClient.auth.signInWithPassword({ email, password });
+    const { data: signInData, error: signInError } =
+      await anonClient.auth.signInWithPassword({ email, password });
     if (signInError || !signInData?.session) {
       return jsonResponse({ error: GENERIC_ERROR }, 400);
     }
@@ -110,7 +143,7 @@ Deno.serve(async (req: Request) => {
         access_token: signInData.session.access_token,
         refresh_token: signInData.session.refresh_token,
       },
-      200
+      200,
     );
   } catch (err) {
     return jsonResponse({ error: `خطأ غير متوقع: ${String(err)}` }, 500);

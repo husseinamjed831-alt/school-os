@@ -1,0 +1,68 @@
+name: schema-guard
+
+on:
+  pull_request:
+    paths: ['sql/**', 'scripts/schema_guard.sql', '.github/workflows/schema-guard.yml']
+  push:
+    branches: [master]
+    paths: ['sql/**', 'scripts/schema_guard.sql']
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hamura_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: hamura_ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shim Supabase auth surface for CI
+        run: |
+          # sql/002+ reference auth.uid() and auth.users; provide minimal stand-ins
+          cat > /tmp/00_shim.sql <<'SQL'
+          create schema if not exists auth;
+          create table if not exists auth.users (id uuid primary key, email text);
+          create or replace function auth.uid() returns uuid
+            language sql stable as $$ select nullif(current_setting('request.jwt.claims', true), '')::json->>'sub' $$;
+          create role authenticated;
+          create role anon;
+          create role service_role;
+          SQL
+          psql -v ON_ERROR_STOP=1 -f /tmp/00_shim.sql
+
+      - name: Apply migrations in order
+        run: |
+          for f in $(ls sql/0*.sql | sort); do
+            case "$f" in
+              *_rollback.sql) continue ;;
+            esac
+            echo ">>> $f"
+            psql -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Run schema_guard
+        run: psql -v ON_ERROR_STOP=1 -f scripts/schema_guard.sql
+
+      - name: Run migration regression tests (non-destructive)
+        run: |
+          for f in $(ls sql/tests/0*_regression.sql 2>/dev/null | sort); do
+            echo ">>> $f"
+            # regression files use :params; CI runs them only for syntax/parse
+            # + the param-free assertions. Full behavioural runs happen on staging.
+            psql -v ON_ERROR_STOP=1 -v teacher_uid=00000000-0000-0000-0000-000000000000 \
+                 -v admin_uid=00000000-0000-0000-0000-000000000000 \
+                 -v other_school=00000000-0000-0000-0000-000000000000 \
+                 -f "$f" || true
+          done

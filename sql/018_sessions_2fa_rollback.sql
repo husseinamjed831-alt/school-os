@@ -1,0 +1,11 @@
+begin;
+drop function if exists public.mfa_required_for_me();
+alter table public.school_settings drop column if exists mfa_required_roles;
+drop function if exists public.block_device(uuid,boolean);
+drop function if exists public.revoke_all_sessions(uuid,text);
+drop function if exists public.revoke_session(uuid,text);
+drop function if exists public.session_is_active(text);
+drop function if exists public.register_session(text,text,text,inet,text);
+drop table if exists public.user_sessions;
+drop table if exists public.user_devices;
+commit;

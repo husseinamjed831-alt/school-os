@@ -28,20 +28,15 @@ alter table audit.audit_log add column if not exists impersonated_by uuid;
 -- SET LOCAL hamura.request_id / hamura.impersonated_by; NULL when absent).
 create or replace function audit.log_change() returns trigger
 language plpgsql security definer set search_path = public, audit as $$
-declare
-  v_school_id uuid;
-  v_row_id text;
+declare v_school_id uuid; v_row_id text; v_json jsonb;
 begin
-  v_school_id := case when TG_OP = 'DELETE' then (to_jsonb(old)->>'school_id')::uuid
-                      else (to_jsonb(new)->>'school_id')::uuid end;
-  v_row_id := case when TG_OP = 'DELETE' then (to_jsonb(old)->>'id')
-                   else (to_jsonb(new)->>'id') end;
-
+  v_json := case when TG_OP='DELETE' then to_jsonb(old) else to_jsonb(new) end;
+  v_school_id := (v_json->>'school_id')::uuid;
+  v_row_id := coalesce(v_json->>'id', v_json->>'school_id', v_json->>'profile_id', md5(v_json::text));
   insert into audit.audit_log
     (school_id, table_name, row_id, action, actor, actor_role, impersonated_by, request_id, old_data, new_data)
   values (
-    v_school_id, TG_TABLE_NAME, v_row_id, TG_OP,
-    auth.uid(),
+    v_school_id, TG_TABLE_NAME, v_row_id, TG_OP, auth.uid(),
     (select role from public.profiles where id = auth.uid()),
     nullif(current_setting('hamura.impersonated_by', true), '')::uuid,
     nullif(current_setting('hamura.request_id', true), '')::uuid,

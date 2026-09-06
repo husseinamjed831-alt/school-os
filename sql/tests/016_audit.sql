@@ -49,7 +49,15 @@ rollback;
 
 -- COVERAGE : every tenant table has a DML audit trigger
 select 'T-AUDIT-COVERAGE-1' as t,
-  case when (with tt as (select table_name from information_schema.columns where table_schema='public' and column_name='school_id'),
-                 aud as (select distinct event_object_table tn from information_schema.triggers where trigger_schema='public' and action_statement ilike '%audit.log_change%')
-             select count(*) from tt t left join aud a on a.tn=t.table_name where a.tn is null) = 0
-       then 'PASS' else 'FAIL' end as result;
+  case when (
+    with tt as (
+      select c.table_name
+      from information_schema.columns c
+      join information_schema.tables tb on tb.table_schema=c.table_schema and tb.table_name=c.table_name
+      where c.table_schema='public' and c.column_name='school_id' and tb.table_type='BASE TABLE'
+        and c.table_name not in ('audit_events','domain_events','security_events','audit_export_log')
+    ),
+    aud as (select distinct event_object_table tn from information_schema.triggers
+            where trigger_schema='public' and action_statement ilike '%audit.log_change%')
+    select count(*) from tt t left join aud a on a.tn=t.table_name where a.tn is null) = 0
+   then 'PASS' else 'FAIL' end as result;

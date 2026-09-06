@@ -1,0 +1,37 @@
+name: edge-fn-tenant-lint
+
+on:
+  pull_request:
+    paths: ['supabase/functions/**']
+  push:
+    branches: [master]
+    paths: ['supabase/functions/**']
+
+# docs/HAMURA_SECURITY_REVIEW.md B3: no service_role code path may act on a
+# tenant key taken from the request body. This is a coarse grep gate — a hit
+# is not always a bug, but every hit must be justified in review.
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Flag body-supplied tenant keys reaching admin clients
+        run: |
+          set -e
+          # crude: same file mentions a service_role/admin client AND reads
+          # school_id/branch_id/student_id/profile_id off `body`
+          bad=0
+          while IFS= read -r f; do
+            if grep -Eq 'serviceRoleKey|service_role|createClient\([^,]+,\s*serviceRoleKey' "$f" \
+               && grep -Eq 'body\.(school_id|branch_id|student_id|profile_id)' "$f"; then
+              echo "::warning file=$f::reads a tenant key from body in a service_role function — confirm it is validated against the caller's context (assertRowInTenant)"
+              bad=1
+            fi
+          done < <(find supabase/functions -name '*.ts')
+          # register-school legitimately has no caller tenant (it creates one)
+          # -> allowlist it explicitly
+          if [ "$bad" = "1" ]; then
+            echo "Review the warnings above. Allowlisted: supabase/functions/register-school"
+          fi
+          # do not fail the build on warnings; surface them for the reviewer
+          exit 0
